@@ -2,120 +2,45 @@
 title: "drugRelatedDescriptors"
 subtitle: ""
 author: "Thomas Gerlach"
-date: "28 OCT 2016"
+date: ""
 output: html_document
 ---
 
-```{r}
-###############################################################################
-# $HeadURL:  drugRelatedDescriptors.Rmd
-# $Rev:  
-# $Date:     28 OCT 2016
-# $Author:   Thomas Gerlach
-# -----------------------------------------------------------------------------
-# CATEG:   incidence, prevalence
-# DESCR:   see drugRelatedDescriptors.uxf
-# KEYS : 
-# INPUT:
-# OUT  : 
-# REQ  : 
-# NOTES: 
-# FILTERS: 
-###############################################################################
-
-# drug filtering -> chunk 15
-
-```
-
-```{r setup, include=FALSE, echo = FALSE }
-# set knitr defaults
-knitr::opts_chunk$set(echo = FALSE, include = FALSE, fig.width=20, fig.height=10)
-```
-  
-# load resources
-```{r start, echo=FALSE}
+# setup
+```{r start, echo=FALSE, include = FALSE}
+rm(list=setdiff(ls(), "TABLE04SAS7BDAT"))
+knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7) # markdown
 source("z_start.R") # initalize netezza DB, load core data
 if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
-PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
 ```
 
-# set and load global variables
-```{r, echo = FALSE, fig.width=20, fig.height=10}
-# data
-phew2custom <- read.csv2("~/epilepsie_preprocessing_descrStat/data/phewas_nonEpi_gt1percent.csv")
+# global params
+```{r}
+params <- vector("list")
+params$thres.subst.freq   <- 2
+```
 
-# # main co-morbidities
-mainComorb <- c(
-  "heart and circular system",
-  "malaise, nausea, vertigo",
-  "metabolic diseases",
-  "migrane, headache",
-  "Neurological disorders",
-  "psychatric and psychological disorders",
-  "substance addiction and disorders")
+# frequent substances only!
+only for frequent substances drug features will be computed
+```{r start, echo=FALSE}
+P                   <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
+subst.freq          <- SUBSTANCE_FREQUENCY(P)
+relevant.subst      <- subst.freq %>% filter(freq >= params$thres.subst.freq) %>% dplyr::select(SUBSTANCENAME)
 
-main_Phew_highlvl    <- as.character(phew2custom$PHEWAS_STRING_HL[phew2custom$customised_high_level2 %in% mainComorb])
+PATIENTS.DRUGS <- 
+  P %>% filter(SUBSTANCENAME %in% relevant.subst$SUBSTANCENAME) %>% 
+ dplyr::select(SUBSTANCENAME, PROPRIETARYNAME, PHARMCLS1) %>% 
+  distinct()
 
-# # phewas epilepsy-only terms
-phew_epiOnly <- c(
-  "Convulsions",
-  "Epilepsy, recurrent seizures, convulsions",
-  "Partial epilepsy",
-  "Epilepsy",
-  "Generalized convulsive epilepsy"
-)
-
+PATIENTS.DRUGS <- as_tibble(apply(PATIENTS.DRUGS,2,function(x) trimws(toupper(x))))
+rm(P)
 ```
 
 # apply filters
 ```{r standardize population, echo=FALSE}
-
-source("functions/n_patient_per_period.R")
-source( "functions/patient_monthly_enrolment.R")
-source("functions/patient_nonNegative_DAYSUPP.R")
-source("functions/setAEDFlag.R")
-source("functions/aggregate_AED_substancenames.R")
-source("functions/add_Phew_PhewHighlevel.R")
-source("functions/disOnt_ICD9_2_MESH.R")
-
-# # reset PATIENT_AGE_REGION filters: 0y FU
-# PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
-
-# # re-compute missing IXDAYS for all observations
-newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
-PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
-
-# # # Keep only patients within valid time period 
-PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
-
-# # Add Age and Regional Information
-PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
-
-# # # only keep patients without gaps within the relevant observation period
-# PATIENTS_AGE_REGION <- filter_patient_gapFreePeriod(PATIENTS_AGE_REGION,gapFreePeriod = "quarter")
-
-# # patient monthly enrolment: health insurance
-# PATIENTS_AGE_REGION <- patient_filter_healthCareEnrolment(PATIENTS_AGE_REGION)
-
-# # only patients with non-negative DAYSUP
-PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
-
-# # set AED flag
-PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
-
-# # aggregate AED SUBSTANCENAME's
-# PATIENTS_AGE_REGION <- aggregate_AED_substancenames(PATIENTS_AGE_REGION)
-
-# # match PHEWAS terms to ICD9 terms
-PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
-
-# # PATIENTS_AGE_REGION backup for population size computations
-# PATIENTS_AGE_REGION_bak <- PATIENTS_AGE_REGION
-
-
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(PATIENTS_AGE_REGION)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
 ```
-
-
 
 # script specific functions
 ```{r}
@@ -136,49 +61,6 @@ parseColByIdx <- function(data, colname,idx.key,sep=";") {
 }
 ###################
 parseMe <- function(x) c(sum(grepl(";",x)), sum(grepl(",",x)))
-###################
-parseICD9 <- function(icd9.unparsed) {
-  
-  ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "") %>%   distinct() %>%  collect()
-  ICD9GROUPING <- as_tibble(apply(ICD9GROUPING,2,as.character))
-  ICD9 <- as_tibble(cbind(ICD9c = ICD9GROUPING$ICD9, ICD9n = ICD9GROUPING$ICD9 %>% as.character() %>% as.numeric()))
-  ICD9 <- data.frame(ICD9c = ICD9GROUPING$ICD9, ICD9n = as.numeric(as.character(ICD9GROUPING$ICD9)))
-  
-  parsed <- c()
-  
-  for(k in 1:length(icd9.unparsed)) { 
-    
-     if(k %% 100 == 0) print(k)
-    #print(k)
-    x1 <- strsplit(icd9.unparsed[k],",") %>% unlist() %>% strsplit("-")
-    x2 <- unlist(lapply(x1,length))
-    
-    # parse and attach non-interval elements
-    x2.nonint <- which(x2==1)
-    if(length(x2.nonint)>0){
-      x2.nonint <- trimws(unlist(x1[x2.nonint]))
-      parsed    <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=x2.nonint,row.names=NULL))
-    }
-    
-    # parse and attach interval-elements (e.g "120-121")
-    x2.interv <- which(x2==2)
-    
-    if(length(x2.interv) >0) {
-      
-      for (l in 1:length(x2.interv)) {
-        x3 <- unlist(x1[[x2.interv[l]]])
-        lb <- as.numeric(x3[1])
-        rb <- as.numeric(x3[2])
-        if(rb == floor(rb)) rb <- rb + 1 - 1e-3
-        x3.ICD9.idx <- which(between(ICD9$ICD9n,lb,rb))
-        parsed      <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=as.character(ICD9$ICD9c[x3.ICD9.idx]),row.names=NULL))
-      }
-    }
-  }
-return(parsed)
-}
-
-
 ```
 
 # WAY A
@@ -235,9 +117,7 @@ parseMe(D2I$LNM)
 
 # parse ICD9
 ############
-parseMe(D2I$ICD9)
-icd9.unparsed <- unique( D2I$ICD9[!is.na(D2I$ICD9)] )
-icd9.parsed <- parseICD9( icd9.unparsed) 
+D2I <- ParseICD9(D2I %>% dplyr::rename(DIAG = ICD9)) %>% dplyr::rename(ICD9 = DIAG)
 
 # match parsed ICD9 to D2I
 D2I <- left_join(D2I, as.data.frame(icd9.parsed,stringsAsFactors=FALSE),by=c("ICD9"="V1"))
@@ -342,26 +222,6 @@ DRD.W0.1 <- inner_join(PATIENTS.DRUGS, DRD.A.4) %>% dplyr::select(-DRUGNAME) %>%
 
 # add drugname from DRUG2SYNONYMS
 DRD.W0.1 <- left_join(DRD.W0.1, DRUG2SYNONYMS %>% dplyr::select(-SYNONYMS)) %>% distinct()
-```
-
-# drug filter
-```{r}
-# subst.freq <- 
-#   PATIENTS_AGE_REGION %>% 
-#   filter(SUBSTANCENAME != "") %>% 
-#   dplyr::select(SUBSTANCENAME, ENROLID) %>% 
-#   distinct() %>% 
-#   group_by(SUBSTANCENAME) %>% 
-#   tally(sort = TRUE)
-# 
-# nPat              <- n_distinct(PATIENTS_AGE_REGION$ENROLID)
-# subst.freq$n.freq <- subst.freq$n/nPat
-# subst.freq.f      <- subst.freq %>% filter(n.freq >= 0.05)
-
-load("~/epilepsie_preprocessing_descrStat/atogQueries/AEDs.RData")
-DRD.W0.1 <- DRD.W0.1 %>% filter(SUBSTANCENAME %in% AEDs$SUBSTANCENAME)
-
-n_distinct(DRD.W0.1$SUBSTANCENAME)
 ```
 
 ## add PHEWAS-Code
@@ -833,12 +693,13 @@ TARGET2DISEASES <- tbl(src,"REFERENCE.TARGET2DISEASES") %>% dplyr::select(TTDTAR
 TARGET2DISEASES$ICD9[TARGET2DISEASES$ICD9 == "."] <- NA
 del <- c("585.9585.1-585.5403","280-285, 585.9585.1-585.5403")
 TARGET2DISEASES <- TARGET2DISEASES %>% filter(ICD9 != "", !is.na(ICD9), !(ICD9 %in% del))
-u <- unique(as.character(TARGET2DISEASES$ICD9))
-parsed <- as.data.frame(parseICD9(u))
-head(parsed)
-colnames(parsed) <- c("ICD9","ICD9.parsed")
-TARGET2DISEASES <- left_join(TARGET2DISEASES, parsed) %>% dplyr::select(-ICD9) %>% dplyr::rename(ICD9 = ICD9.parsed) %>% distinct()
-TARGET2DISEASES$ICD9 <- trimws(TARGET2DISEASES$ICD9)
+TARGET2DISEASES <- ParseICD9(TARGET2DISEASES %>% dplyr::rename(DIAG = ICD9)) %>% dplyr::rename(ICD9 = DIAG)
+# u <- unique(as.character(TARGET2DISEASES$ICD9))
+# parsed <- as.data.frame(parseICD9(u))
+# head(parsed)
+# colnames(parsed) <- c("ICD9","ICD9.parsed")
+# TARGET2DISEASES <- left_join(TARGET2DISEASES, parsed) %>% dplyr::select(-ICD9) %>% dplyr::rename(ICD9 = ICD9.parsed) %>% distinct()
+# TARGET2DISEASES$ICD9 <- trimws(TARGET2DISEASES$ICD9)
 ```
 
 ## DRD <-> TARGET2UNIPROT <-> TARGET2DISEASES -> DRD
@@ -1037,8 +898,8 @@ DRD.W6.3 <- DRD.W6.3 %>% dplyr::select(-Group.1, -Group.2)
 
 # save feature matrix
 ```{r}
-DRUG.FEATMAT.AED <- DRD.W6.3
-save(DRUG.FEATMAT.AED,file = "atogQueries/DRUG.FEATMAT.AED.RData",compress = T)
+DRUG.FEATMAT <- DRD.W6.3
+save(DRUG.FEATMAT,file = "atogQueries/DRUG.FEATMAT.RData",compress = T)
 
 ```
 
