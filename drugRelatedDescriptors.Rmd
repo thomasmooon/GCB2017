@@ -123,6 +123,79 @@ DRD1 <- inner_join(PATIENTS.DRUGS3, DRUG2SYNONYMS2)
 DRD2 <- DRD1 %>% dplyr::select(TTDDRUGID, SUBSTANCENAME) %>% distinct()
 ```
 
+# DRUG -> INDICATION
+
+## DRUG2INDICATIONS -> DRUG2INDICATIONS2
+```{r}
+DRUG2INDICATIONS2 <- 
+  tbl(src,"REFERENCE.DRUG2INDICATIONS") %>% 
+  filter(HSP == 1) %>% 
+  dplyr::select(DRUG_DESC, ICD9) %>%
+  distinct() %>% 
+  collect() 
+
+DRUG2INDICATIONS2$DRUG_DESC <- trimws(toupper(DRUG2INDICATIONS$DRUG_DESC))
+DRUG2INDICATIONS2$ICD9 <- as.character(DRUG2INDICATIONS$ICD9)
+
+# omit E- and V- ICD9-codings
+E <- grep("E",DRUG2INDICATIONS2$ICD9)
+V <- grep("V",DRUG2INDICATIONS2$ICD9)
+DRUG2INDICATIONS2 <- DRUG2INDICATIONS2[-c(E,V),]
+rm(E,V)
+```
+
+## DRD2 + DRUG2INDICATIONS2  = drug2indications1
+```{r}
+drug2indications1 <- inner_join(DRD2, DRUG2INDICATIONS, by=c("SUBSTANCENAME"="DRUG_DESC"))
+```
+
+## ICD9GROUPING -> ICD9GROUPING2
+### PHEWAS_CODE -> PHEWAS_HIGHLEVEL_CODE
+### PHEWAS_HIGHLEVEL_CODE -> PHEWAS_HIGHLEVEL_STRING
+
+```{r}
+ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% select(ICD9, PHEWAS_CODE, PHEWAS_STRING) %>% distinct() %>% collect()
+ICD9GROUPING <- sapply(ICD9GROUPING, function(x) trimws(toupper(as.character(x)))) %>% as_tibble()
+ICD9GROUPING$ICD9 <- as.character(ICD9GROUPING$ICD9)
+ICD9GROUPING$PHEWAS_STRING <- as.character(ICD9GROUPING$PHEWAS_STRING)
+ICD9GROUPING$PHEWAS_STRING <- trimws(toupper(ICD9GROUPING$PHEWAS_STRING))
+
+# omit E- and V- ICD9-codings
+E <- grep("E",ICD9GROUPING$ICD9)
+V <- grep("V",ICD9GROUPING$ICD9)
+ICD9GROUPING <- ICD9GROUPING[-c(E,V),]
+rm(E,V)
+
+# erase / unclear missing values
+ICD9GROUPING <- ICD9GROUPING %>% filter(ICD9 != "", !is.na(PHEWAS_CODE), PHEWAS_STRING != "", PHEWAS_STRING != "1", PHEWAS_STRING != "-")
+
+# PHEWAS_CODE -> PHEWAS_HIGHLEVEL_CODE
+# PHEWAS_HIGHLEVEL_CODE -> PHEWAS_HIGHLEVEL_STRING
+ICD9GROUPING$PHEWAS_CODE <- as.numeric(ICD9GROUPING$PHEWAS_CODE)
+PHEWAS_HL <- 
+  ICD9GROUPING %>% 
+  mutate(PHEWAS_floor = floor(PHEWAS_CODE)) %>% 
+  mutate(isHighlevel = PHEWAS_floor == PHEWAS_CODE) %>% 
+  filter(isHighlevel == TRUE) %>% 
+  select(PHEWAS_CODE, PHEWAS_STRING) %>%
+  distinct() %>% 
+  rename(PHEWAS_CODE_HL = PHEWAS_CODE, PHEWAS_STRING_HL = PHEWAS_STRING)
+
+PHEWAS_HL <- 
+  ICD9GROUPING %>% 
+  mutate(PHEWAS_CODE_HL = floor(PHEWAS_CODE)) 
+
+# ICD9GROUPING2
+ICD9GROUPING2 <- inner_join(ICD9GROUPING2, PHEWAS_HL)
+```
+
+# drug2indications1 + ICD9GROUPING2 = drug2indications
+```{r}
+drug2indications <-  inner_join(ICD9GROUPING2, drug2indications1, by="ICD9") %>% select(-ICD9) %>% distinct()
+```
+
+
+
 
 
 ## DRUGSYNONYMSDRUGBANK
