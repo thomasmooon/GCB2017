@@ -1,89 +1,70 @@
 ---
 title: "disease_Descriptors.Rmd"
+subtitle: ""
 author: "Thomas Gerlach"
-date: "17 11 2016"
+date: ""
 output: html_document
 ---
 
-
-# load core data and connect to netezza
-```{r start, echo=FALSE}
+# setup
+```{r start, echo=FALSE, include = FALSE}
+rm(list=setdiff(ls(), "TABLE04SAS7BDAT"))
+knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7) # markdown
 source("z_start.R") # initalize netezza DB, load core data
-
-# if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
-# PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
 ```
 
+# global params
+```{r}
+params <- vector("list")
+params$thres.subst.freq   <- 2
+```
 
 # script specific functions
 ```{r}
-parseColByIdx <- function(data, colname,idx.key,sep=";") {
+
+####
+parseColByIdx <- function(data, colname,sep=";") {
   
-  colidx          <- which(colnames(data) %in% colname)
-  row             <- data[,colidx] != "" | !is.na(data[,colidx])
-  y.data          <- data[row,]
-  y               <- sapply(y.data[,colidx], function(x) strsplit(x,split = sep))
-  y.length        <- sapply(y,length)
-  y.data          <- y.data[rep(seq_len(nrow(y.data)), y.length),]
-  y.data[,colidx] <- unlist(y)
+  keyIdx  <- which(colnames(data) %in% colname)
+  isEmpty <- data[,keyIdx] == "" & is.na(data[,keyIdx])
+  data    <- data[!isEmpty,]
   
-  data     <- data[,-colidx]
-  y.data   <- y.data[,c(idx.key,colidx)]
-  data.new <- left_join(data,y.data)
-  return(unique(data.new))
+  parse         <- data[,keyIdx]
+  parsed.list   <- sapply(parse, function(x) strsplit(x,split = sep))
+  reps          <- sapply(parsed.list,length)
+  
+  parsed        <- unlist(parsed.list)
+  cnames        <- c(colnames(data[,-keyIdx]),colname)
+  
+  row.reps      <- unlist(mapply(rep, 1:length(reps), reps))
+  data.new      <- cbind(data[row.reps, - keyIdx], parsed)
+  colnames(data.new) <- cnames
+  
+  data.new <- sapply(data.new,function(x) as.character(x)) %>% as_tibble() %>% distinct()
+  
+  return(data.new)
+  
 }
 ###################
-parseMe <- function(x) c(sum(grepl(";",x)), sum(grepl(",",x)))
-###################
-parseICD9 <- function(icd9.unparsed) {
-  
-  ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "") %>%   distinct() %>%  collect()
-  ICD9GROUPING <- as_tibble(apply(ICD9GROUPING,2,as.character))
-  ICD9 <- as_tibble(cbind(ICD9c = ICD9GROUPING$ICD9, ICD9n = ICD9GROUPING$ICD9 %>% as.character() %>% as.numeric()))
-  ICD9 <- suppressWarnings(data.frame(ICD9c = ICD9GROUPING$ICD9, ICD9n = as.numeric(as.character(ICD9GROUPING$ICD9))))
-  
-  parsed <- c()
-  
-  for(k in 1:length(icd9.unparsed)) { 
-    
-     if(k %% 100 == 0) print(k)
-    #print(k)
-    x1 <- strsplit(icd9.unparsed[k],",") %>% unlist() %>% strsplit("-")
-    x2 <- unlist(lapply(x1,length))
-    
-    # parse and attach non-interval elements
-    x2.nonint <- which(x2==1)
-    if(length(x2.nonint)>0){
-      x2.nonint <- trimws(unlist(x1[x2.nonint]))
-      parsed    <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=x2.nonint,row.names=NULL))
-    }
-    
-    # parse and attach interval-elements (e.g "120-121")
-    x2.interv <- which(x2==2)
-    
-    if(length(x2.interv) >0) {
-      
-      for (l in 1:length(x2.interv)) {
-        x3 <- unlist(x1[[x2.interv[l]]])
-        lb <- as.numeric(x3[1])
-        rb <- as.numeric(x3[2])
-        if(rb == floor(rb)) rb <- rb + 1 - 1e-3
-        x3.ICD9.idx <- which(between(ICD9$ICD9n,lb,rb))
-        parsed      <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=as.character(ICD9$ICD9c[x3.ICD9.idx]),row.names=NULL))
-      }
-    }
+# check for delimiters ";" and ","
+parseMe <- function(x) {
+  delim <- c(";",",","|")
+  n <- c(sum(grepl(";", x)), sum(grepl(",", x)), sum(grepl("\\|", x)))
+  n.delim <- data.frame(delim,n)
+  return(n.delim)
   }
-  colnames(parsed) <- c("unparsed","parsed")
-  return(parsed)
-}
+
+##################
+NormalizeStrings <- function(y) sapply(y, function(x) trimws(toupper(as.character(x)))) %>% as_tibble()
 
 
 ```
 
-# markdown defaults
-```{r setup, include=FALSE, echo = FALSE }
-# set knitr defaults
-knitr::opts_chunk$set(echo = FALSE, include = FALSE, fig.width=20, fig.height=10)
+# filter patients
+```{r standardize population, echo=FALSE}
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
 ```
 
 # load matching resources
@@ -223,13 +204,6 @@ DISEASE2PHEWAS             <- DISEASE2PHEWAS[complete.cases(DISEASE2PHEWAS),] %>
 rm(x)
 ```
 
-
-
-
-
-
-
-
 ## get GENETIC DISEASE DESCRIPTORS
 
 * DISEASE2GENES
@@ -262,21 +236,6 @@ DISEASE2KEGG  <- DIS_GEN_GO_PATH %>% select(DISEASE.ICD9, DISEASE.PATH) %>% dist
 
 rm(DIS_GEN_GO_PATH, disease2genes)
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # build disease descriptors feature matrix
 
