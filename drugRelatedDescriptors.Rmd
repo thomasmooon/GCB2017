@@ -56,10 +56,7 @@ parseMe <- function(x) {
 
 ##################
 NormalizeStrings <- function(y) sapply(y, function(x) trimws(toupper(as.character(x)))) %>% as_tibble()
-
-
 ```
-
 
 # filter patients
 ```{r standardize population, echo=FALSE}
@@ -215,8 +212,6 @@ ICD9GROUPING2 <- inner_join(ICD9GROUPING, PHEWAS_HL)
 drug2indications <-  inner_join(ICD9GROUPING2, drug2indications1, by="ICD9") %>% dplyr::select(-ICD9) %>% distinct()
 ```
 
-
-
 # DRUG -> side effects
 
 ## DRUG2SIDEEFFECTS + DRUGIDS -> ... -> DRUG2SIDEEFFECTS3
@@ -325,7 +320,6 @@ DRUGIDS <-
   distinct() %>% collect() %>% 
   dplyr::rename(ATC = SOURCE_ID) 
 
-
 DRUGIDS <- sapply(DRUGIDS, function(x) as.character(x)) %>% as_tibble()
 
 DRUGIDS2 <- 
@@ -379,7 +373,6 @@ drug2sideeffects2 <-
     drug2sideeffects2 %>% dplyr::select(-SuperDrugATC.y) %>% dplyr::rename(ATC = SuperDrugATC.x),
     drug2sideeffects2 %>% dplyr::select(-SuperDrugATC.x) %>% dplyr::rename(ATC = SuperDrugATC.y)
   ) %>% distinct()
-
 ```
 
 ## drug2sideeffects2 + DRUG2SIDEEFFECTS3 -> drug2sideeffects
@@ -416,6 +409,7 @@ DrugSynonymsDrugBank2 <-
 
 drug2uniprot1.1 <- left_join(DRD2, DrugSynonymsDrugBank2, by="names")
 ```
+
 ## preprocessing DRUGTARGETSDRUGBANK
 ## drug2uniprot1.1 + DRUGTARGETSDRUGBANK -> ... -> drug2uniprot1.3
 ```{r}
@@ -469,6 +463,7 @@ drug2go <- drug2go %>% dplyr::rename(GO = TARGET.GO.CLASS.TERM)
 ```
 
 # UNIPROT -> PATHWAY
+
 ## KEGG
 ```{r}
 # drug2pathway1
@@ -531,7 +526,6 @@ drug2pathway.wiki <- inner_join(drug2entrez, entrez2wiki, by = "ENTREZID") %>% d
 drug2pathway.uniprot <- rbind(drug2pathway.kegg, drug2pathway.wiki %>% dplyr::rename(Pathway = PATH)) %>% distinct()
 ```
 
-
 # DRUG -> PATHWAY
 ```{r}
 load("~/epilepsie_preprocessing_descrStat/data/TTD/TARGET_ONTOLOGY.RData") 
@@ -580,6 +574,7 @@ TARGET2WIKIPATHWAYS <-
 TARGETPATHWAYS <- rbind(TARGET2KEGGPATHWAYS, TARGET2WIKIPATHWAYS) %>% distinct()
 TARGETPATHWAYS <- NormalizeStrings(TARGETPATHWAYS) %>% distinct()
 ```
+
 ## drug2pathway.target
 ```{r}
 drug2pathway.target <- inner_join(TTDDRUGID2TTD, TARGETPATHWAYS, by = "TTDID") %>% dplyr::select(-TTDID)
@@ -645,17 +640,6 @@ fo.drug2sideeffects <- My.make.names(fo.drug2sideeffects)
 fo.drug2go          <- My.make.names(fo.drug2go)
 fo.drug2pathway     <- My.make.names(fo.drug2pathway)
 
-# # replace double dot with dot
-# ReplaceDoubleDot <- function(x)  gsub("\\.{2,}",".",x)
-# Wrap.ReplaceDoubleDot <- function(x) apply(x,2,function(xx) ReplaceDoubleDot(xx)) %>% as_tibble() %>% distinct()
-# 
-# fo.DRD1 <- Wrap.ReplaceDoubleDot(fo.DRD1)
-# fo.drug2indications.1 <- Wrap.ReplaceDoubleDot(fo.drug2indications.1)
-# fo.drug2indications.2 <- Wrap.ReplaceDoubleDot(fo.drug2indications.2)
-# fo.drug2sideeffects <- Wrap.ReplaceDoubleDot(fo.drug2sideeffects)
-# fo.drug2go <- Wrap.ReplaceDoubleDot(fo.drug2go)
-# fo.drug2pathway <- Wrap.ReplaceDoubleDot(fo.drug2pathway)
-
 # stats for fo's
 FeatStats(fo.DRD1)
 FeatStats(fo.drug2indications.1)
@@ -696,4 +680,3 @@ knitr::kable(data.frame(class=c("substances","features"),n=dim(drug.features)))
 ```{r}
 save(drug.features,file = "output/featureMatrix/DRUG.FEATMAT.RData",compress = T)
 ```
-
