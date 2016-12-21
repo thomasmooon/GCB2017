@@ -22,9 +22,20 @@ library(gplots)
 # functions #
 #############
 
+###############
+# detect number of delimiters
+parseMe <- function(x) {
+  delim <- c(";",",","|")
+  n <- c(sum(grepl(";", x)), sum(grepl(",", x)), sum(grepl("\\|", x)))
+  n.delim <- data.frame(delim,n)
+  return(n.delim)
+}
+
+###############
 # count number of patients per DIAG (ICD9)
 
 Diag_frequency <- function(P) {
+  nPat <- P %>% dplyr::select(ENROLID) %>% distinct() %>% tally() %>% as.numeric()
   freq.DIAG <- P %>% 
     filter(DIAG != "") %>% 
     select(ENROLID, DIAG) %>% 

@@ -17,12 +17,11 @@ if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
 # global params
 ```{r}
 params <- vector("list")
-params$thres.subst.freq   <- 2
+params$thres.diag.freq   <- 2
 ```
 
 # script specific functions
 ```{r}
-
 ####
 parseColByIdx <- function(data, colname,sep=";") {
   
@@ -58,20 +57,78 @@ parseMe <- function(x) {
 ##################
 NormalizeStrings <- function(y) sapply(y, function(x) trimws(toupper(as.character(x)))) %>% as_tibble()
 
-
+##################
+ParseConcatenatedICD9 <- function(icd9.unparsed) {
+  
+  ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "") %>%   distinct() %>%  collect()
+  ICD9GROUPING <- as_tibble(apply(ICD9GROUPING,2,as.character))
+  ICD9 <- suppressWarnings(as_tibble(cbind(ICD9c = ICD9GROUPING$ICD9, ICD9n = ICD9GROUPING$ICD9 %>% as.character() %>% as.numeric())))
+  ICD9 <- suppressWarnings(data.frame(ICD9c = ICD9GROUPING$ICD9, ICD9n = as.numeric(as.character(ICD9GROUPING$ICD9))))
+  
+  parsed <- c()
+  
+  for(k in 1:length(icd9.unparsed)) { 
+    
+     if(k %% 100 == 0) print(k)
+    #print(k)
+    x1 <- strsplit(icd9.unparsed[k],",") %>% unlist() %>% strsplit("-")
+    x2 <- unlist(lapply(x1,length))
+    
+    # parse and attach non-interval elements
+    x2.nonint <- which(x2==1)
+    if(length(x2.nonint)>0){
+      x2.nonint <- trimws(unlist(x1[x2.nonint]))
+      parsed    <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=x2.nonint,row.names=NULL))
+    }
+    
+    # parse and attach interval-elements (e.g "120-121")
+    x2.interv <- which(x2==2)
+    
+    if(length(x2.interv) >0) {
+      
+      for (l in 1:length(x2.interv)) {
+        x3 <- unlist(x1[[x2.interv[l]]])
+        lb <- as.numeric(x3[1])
+        rb <- as.numeric(x3[2])
+        if(rb == floor(rb)) rb <- rb + 1 - 1e-3
+        x3.ICD9.idx <- which(between(ICD9$ICD9n,lb,rb))
+        parsed      <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=as.character(ICD9$ICD9c[x3.ICD9.idx]),row.names=NULL))
+      }
+    }
+  }
+  colnames(parsed) <- c("unparsed","parsed")
+  return(parsed)
+}
 ```
 
 # filter patients
 ```{r standardize population, echo=FALSE}
 PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
 PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
+# delete DIAG terms with E or V prefix
+EV <- grep("E|V",PATIENTS_AGE_REGION$DIAG)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION[-EV,]
 ```
 
-# load matching resources
+# frequent diagnosis only
+```{r start, echo=FALSE}
+PATIENTS_AGE_REGION <- ParseICD9(PATIENTS_AGE_REGION)
+diag.freq <- Diag_frequency(PATIENTS_AGE_REGION)
+relevant.diag <- diag.freq %>% filter(freq >= params$thres.diag.freq) %>% dplyr::select(DIAG)
+```
+
+# load + preprocess matching resources
+Preprocessing:
+* Normalize Strings
+* make.names()
 
 ## ICD9GROUPING
 ```{r}
 ICD9GROUPING <- tbl(src, "REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "") %>% collect()
+ICD9GROUPING <- NormalizeStrings(ICD9GROUPING)
+
+# filter by relevant diagnosis
+ICD9GROUPING <- ICD9GROUPING %>% filter(ICD9 %in% relevant.diag$DIAG)
 ```
 
 ## MESH2ICD9
@@ -79,7 +136,7 @@ ICD9GROUPING <- tbl(src, "REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "") %>% co
 MESH2ICD9 <- read.csv("~/epilepsie_preprocessing_descrStat/data/diseaseDescriptors/doid_MESH2ICD9_2016-09-15.csv", header=TRUE, sep=";")
 MESH2ICD9 <- as_tibble(unique(MESH2ICD9))
 
-# drop IDS which no MESH terms
+# drop IDs which no MESH terms
 MESH2ICD9$mesh[MESH2ICD9$mesh == ""] <- NA
 x <- MESH2ICD9 %>% group_by(id) %>% select(mesh) %>% filter(!is.na(mesh)) %>% distinct()
 MESH2ICD9 <- MESH2ICD9 %>% filter(id %in% x$id)
@@ -92,42 +149,82 @@ MESH2ICD9 <- MESH2ICD9 %>% filter(id %in% x$id)
 MESH2ICD9x <- MESH2ICD9 %>% select(id, mesh) %>% filter(!is.na(mesh))
 MESH2ICD9x <- left_join(MESH2ICD9x, MESH2ICD9 %>% select(id, icd9) %>% filter(!is.na(icd9)))
 MESH2ICD9  <- MESH2ICD9x %>% select(-id) %>% distinct()
-
-#
 rm(MESH2ICD9x, x)
+
+# filter by relevant diagnosis
+MESH2ICD9 <- MESH2ICD9 %>% filter(icd9 %in% as.numeric(relevant.diag$DIAG))
 ```
 
 ## DISEASE2BIOMARKER
 ```{r}
 DISEASE2BIOMARKER <- tbl(src, "REFERENCE.DISEASE2BIOMARKER" ) %>% collect()
 DISEASE2BIOMARKER <- DISEASE2BIOMARKER %>% select(-DISEASE, -ICD10, -BIOMARKERNAME) %>% distinct()
-
+DISEASE2BIOMARKER <- apply(DISEASE2BIOMARKER,2,as.character) %>% as_tibble()
 # parse ICD9
-icd9parsed        <- as_tibble(parseICD9( as.character(unique(DISEASE2BIOMARKER$ICD9)) ))
-DISEASE2BIOMARKER <- left_join(DISEASE2BIOMARKER, icd9parsed, by = c("ICD9" = "unparsed")) %>% select(-ICD9) %>% dplyr::rename(ICD9 = parsed) %>% distinct()
-#
+icd9parsed        <- as_tibble(ParseConcatenatedICD9( as.character(unique(DISEASE2BIOMARKER$ICD9)) ))
+DISEASE2BIOMARKER <- 
+  left_join(DISEASE2BIOMARKER, icd9parsed, by = c("ICD9" = "unparsed")) %>% 
+  select(-ICD9) %>%
+  dplyr::rename(ICD9 = parsed) %>%
+  distinct()
 rm(icd9parsed)
+
+# filter by relevant diagnosis
+DISEASE2BIOMARKER <- DISEASE2BIOMARKER %>% filter(ICD9 %in% relevant.diag$DIAG)
 ```
 
-## DISEASE2GENES
+## DISEASE2PHEWAS
 ```{r}
-load("~/epilepsie_preprocessing_descrStat/output/disease2genes_2016-10-24.RData")
-disease2genes <- disease2genes %>% dplyr::rename(score.Disease2Gene = score) %>% distinct()
+ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% dplyr::select(ICD9, ICD9_STRING, PHEWAS_CODE, PHEWAS_STRING) %>% distinct() %>% collect()
+ICD9GROUPING <- NormalizeStrings(ICD9GROUPING)
+ICD9GROUPING$ICD9 <- as.character(ICD9GROUPING$ICD9)
+ICD9GROUPING$PHEWAS_STRING <- as.character(ICD9GROUPING$PHEWAS_STRING)
+ICD9GROUPING$PHEWAS_STRING <- trimws(toupper(ICD9GROUPING$PHEWAS_STRING))
 
-# gene subelection by gene-disease-score
-# (score as least as big as the minimal score of curated gene-disease associations)
-min_curated_score <- disease2genes %>% filter(source_descr == "curated") %>% dplyr::select(score.Disease2Gene)
-min_curated_score <- min(min_curated_score$score.Disease2Gene)
-disease2genes <- disease2genes %>% filter(score.Disease2Gene >= min_curated_score, NofPmids >= 10)
+# omit E- and V- ICD9-codings
+E <- grep("E",ICD9GROUPING$ICD9)
+V <- grep("V",ICD9GROUPING$ICD9)
+ICD9GROUPING <- ICD9GROUPING[-c(E,V),]
+rm(E,V)
 
-# drop useless columns
-disease2genes <- disease2genes %>% select(-UMLS, -score.Disease2Gene, -description, - diseaseName, -NofPmids, -PHEWAS_STRING, -source_descr) %>% distinct()
-#
-rm(min_curated_score)
+# erase / unclear missing values
+ICD9GROUPING <- ICD9GROUPING %>% filter(ICD9 != "", !is.na(PHEWAS_CODE), PHEWAS_STRING != "", PHEWAS_STRING != "1", PHEWAS_STRING != "-")
+
+# PHEWAS_CODE -> PHEWAS_HIGHLEVEL_CODE
+# PHEWAS_HIGHLEVEL_CODE -> PHEWAS_HIGHLEVEL_STRING
+ICD9GROUPING$PHEWAS_CODE <- as.numeric(ICD9GROUPING$PHEWAS_CODE)
+
+PHEWAS_HL <- 
+  ICD9GROUPING %>% 
+  mutate(PHEWAS_floor = floor(PHEWAS_CODE)) %>% 
+  mutate(isHighlevel = PHEWAS_floor == PHEWAS_CODE) %>% 
+  filter(isHighlevel == TRUE) %>% 
+  dplyr::select(PHEWAS_CODE, PHEWAS_STRING) %>%
+  distinct() %>% 
+  dplyr::rename(PHEWAS_CODE_HL = PHEWAS_CODE, PHEWAS_STRING_HL = PHEWAS_STRING)
+
+ICD9GROUPING <- 
+  ICD9GROUPING %>% 
+  mutate(PHEWAS_CODE_HL = floor(PHEWAS_CODE)) 
+
+# ICD9GROUPING2
+ICD9GROUPING <- inner_join(ICD9GROUPING, PHEWAS_HL)
+
+# filter by relevant diagnosis
+DISEASE2PHEWAS <-
+  ICD9GROUPING %>%
+  filter(ICD9 %in% relevant.diag$DIAG) %>% 
+  dplyr::select(-ICD9_STRING,-PHEWAS_CODE, -PHEWAS_CODE_HL,-PHEWAS_STRING_HL) %>%
+  distinct()
+
+DISEASE2PHEWAS_HL <- 
+  ICD9GROUPING %>% 
+  filter(ICD9 %in% relevant.diag$DIAG) %>% 
+  dplyr::select(-ICD9_STRING, -PHEWAS_CODE_HL, -PHEWAS_CODE, -PHEWAS_STRING) %>% 
+  distinct()
 ```
 
 ## DISEASE2SYMPTOMS
-
 ```{r}
 DISEASE2SYMPTOMS  <- tbl(src,"REFERENCE.DISEASE2SYMPTOMS") %>% collect()
 
@@ -148,7 +245,108 @@ m2 <- inner_join(DISEASE2SYMPTOMS, ICD9GROUPING %>% select(PHEWAS_STRING, ICD9) 
 DISEASE2SYMPTOMS <- rbind(m1,m2) %>%  select(-MESH_DISEASE_TERM) %>% distinct()
 
 rm(m1,m2)
+
+# filter by relevant diagnosis
+DISEASE2SYMPTOMS <- DISEASE2SYMPTOMS %>% filter(ICD9 %in% relevant.diag$DIAG)
 ```
+
+## DISEASE2GENES
+```{r}
+load("~/epilepsie_preprocessing_descrStat/output/disease2genes_2016-10-24.RData")
+disease2genes <- disease2genes %>% dplyr::rename(score.Disease2Gene = score) %>% distinct()
+
+# gene subelection by gene-disease-score
+# (score as least as big as the minimal score of curated gene-disease associations)
+min_curated_score <- disease2genes %>% filter(source_descr == "curated") %>% dplyr::select(score.Disease2Gene)
+min_curated_score <- min(min_curated_score$score.Disease2Gene)
+disease2genes <- disease2genes %>% filter(score.Disease2Gene >= min_curated_score, NofPmids >= 10)
+
+# drop useless columns
+disease2genes <- 
+  disease2genes %>% 
+  select(-UMLS, -score.Disease2Gene, -description, - diseaseName, -NofPmids, -PHEWAS_STRING, -source_descr, -geneName) %>%
+  distinct()
+
+rm(min_curated_score)
+
+# filter by relevant diagnosis
+disease2genes <- disease2genes %>% filter(ICD9 %in% relevant.diag$DIAG)
+
+# genes per disease
+disease2genes %>% group_by(ICD9) %>% tally(sort = TRUE)
+sapply(disease2genes, n_distinct)
+```
+
+
+###  diag.freq to genes
+```{r}
+left_join(diag.freq, disease2genes %>% group_by(ICD9) %>% tally(sort = TRUE),by = c("DIAG" = "ICD9")) %>% 
+  filter(!is.na(n.y)) %>% 
+  left_join(ICD9GROUPING %>% dplyr::select(ICD9,ICD9_STRING) %>% distinct(), by = c("DIAG" = "ICD9"))
+```
+
+### GO enrichment analysis
+```{r}
+# construct matching table
+library("org.Hs.eg.db")
+frame       <- toTable(org.Hs.egGO)
+goframeData <-  data.frame(frame$go_id, frame$Evidence, frame$gene_id)
+goFrame     <- GOFrame(goframeData, organism <- "Homo sapiens")
+goAllFrame  <- GOAllFrame(goFrame) 
+library("GSEABase")
+gsc <- GeneSetCollection(goAllFrame, setType = GOCollection()) 
+
+# construct background for hypergemetric testing: all entrez-genes for which GO terms exist in org.Hs.eg.db
+library("GOstats")
+keys <- keys(org.Hs.eg.db, keytype = "ENTREZID")
+universe <- as_tibble(AnnotationDbi::select(org.Hs.eg.db, keys = keys, keytype="ENTREZID" ,columns=c("ENTREZID","GO")))
+universe <- universe[complete.cases(universe),] %>% dplyr::select(ENTREZID) %>% distinct()
+
+# define test params, then hypergeom. test, then fdr-correction
+GoEnrichment <- function(genes, .universe, .ontology = BP, .pvalueCutoff = 0.05, .fdrValueCutoff = 0.05) {
+  params <- GSEAGOHyperGParams(name="My Custom GSEA based annot Params",
+                               geneSetCollection=gsc,
+                               geneIds = genes,
+                               universeGeneIds = .universe,
+                               ontology = .ontology,
+                               pvalueCutoff = .pvalueCutoff,
+                               conditional = TRUE,
+                               testDirection = "over")
+  enriched.go <- summary(hyperGTest(params))
+  fdr         <- fdrtool::fdrtool(x = enriched.go$Pvalue, statistic = "pvalue", plot = FALSE, verbose = FALSE)$qval
+  enriched.go <- cbind(enriched.go,fdr)[fdr <= .fdrValueCutoff,]
+  
+  ifelse(length(enriched.go) >0, return(enriched.go), return("NULL"))
+}
+
+
+# enrichment analysis for BP / MF / CC
+goEnrBP <- sapply(X = diseases, FUN = function(disease) disease2genes %>% filter(ICD9 == disease) %>% dplyr::select(entrez)) %>% 
+  mclapply(FUN = function(genes) GoEnrichment(genes, universe$entrez, "BP")[,1], mc.cores = 10)
+
+goEnrMF <- sapply(X = diseases, FUN = function(disease) disease2genes %>% filter(ICD9 == disease) %>% dplyr::select(entrez)) %>% 
+  mclapply(FUN = function(genes) GoEnrichment(genes, universe$entrez, "MF")[,1], mc.cores = 10)
+
+goEnrCC <- sapply(X = diseases, FUN = function(disease) disease2genes %>% filter(ICD9 == disease) %>% dplyr::select(entrez)) %>% 
+  mclapply(FUN = function(genes) try(GoEnrichment(genes, universe$entrez, "CC")[,1],TRUE), mc.cores = 10)
+hasError <- which(unlist(lapply(goEnrCC, FUN = function(x) sum(grepl("error",x,ignore.case = TRUE))>=1)))
+goEnrCC[hasError] <- NA
+
+# combine BP + MF + CC + related diseases
+goEnrAll  <- lapply(1:length(diseases), FUN = function(x) unique(c(goEnrBP[[x]], goEnrMF[[x]], goEnrCC[[x]])) )
+goPerdisease <- unlist(lapply(goEnrAll, length))
+diseases2go  <- as_tibble(data.frame( disease = unlist(mapply(rep, diseases, goPerdisease)), DISEASE.GO = unlist(goEnrAll), stringsAsFactors = FALSE))
+
+# del rows with NA's or errors: keep only those with "GO" char
+diseases2go <- diseases2go[grep(pattern = "GO",diseases2go$DISEASE.GO), ]
+```
+
+### KEGG ENRICHTMENT
+
+### WIKI ENRICHMENT
+
+
+
 
 ## ENTREZ2 ...KEGG ...GO
 ```{r}
@@ -186,7 +384,8 @@ rm(e)
 * ENTREZ2GO
 
 ```{r}
-DISEASE2PHEWAS    <- ICD9GROUPING %>% select(ICD9, PHEWAS_CODE) %>%  filter(PHEWAS_CODE != "") %>% distinct()
+DISEASE2PHEWAS    <- DISEASE2PHEWAS %>% dplyr::select(ICD9, PHEWAS_STRING) %>% distinct() %>% dplyr::rename(DISEASE.PHEWAS = PHEWAS_STRING)
+DISEASE2PHEWASHL  <- DISEASE2PHEWAS %>% dplyr::select(ICD9, PHEWAS_STRING_HL) %>% distinct() %>% dplyr::rename(DISEASE.PHEWAS_HL = PHEWAS_STRING_HL)
 DISEASE2MESH      <- MESH2ICD9 %>% dplyr::rename(DISEASE.MESHDISEASE = mesh, DISEASE.ICD9 = icd9)
 DISEASE2SYMPTOMS  <- DISEASE2SYMPTOMS %>% dplyr::rename(DISEASE.ICD9 = ICD9, DISEASE.MESHSYMPTOM = MESH_SYMPTOM_TERM)
 DISEASE2BIOMARKER <- DISEASE2BIOMARKER %>% dplyr::rename(DISEASE.BIOMARKER_REC_ID = BIOMARKER_REC_ID, DISEASE.ICD9 = ICD9)
@@ -195,20 +394,11 @@ ENTREZ2KEGG       <- ENTREZ2KEGG %>% dplyr::rename(DISEASE.ENTREZ = ENTREZID, DI
 ENTREZ2GO         <- ENTREZ2GO %>% dplyr::rename(DISEASE.ENTREZ = ENTREZID, DISEASE.GO = GO)
 ```
 
-## DISEASE2PHEWAS, only 1 digit
-```{r}
-x <- DISEASE2PHEWAS$PHEWAS_CODE %>% as.character() %>% as.numeric() %>% (function(x) floor(10*x)/10)
-DISEASE2PHEWAS$PHEWAS_CODE <- x
-DISEASE2PHEWAS             <- DISEASE2PHEWAS[complete.cases(DISEASE2PHEWAS),] %>% dplyr::rename(DISEASE.ICD9 = ICD9, DISEASE.PHEWAS = PHEWAS_CODE)
-
-rm(x)
-```
-
 ## get GENETIC DISEASE DESCRIPTORS
-
 * DISEASE2GENES
 * DISEASE2GO: only enriched (hyper-geom. test, FDR)
 * DISEASE2KEGG: only enriched (hyper-geom. test, FDR)
+
 ```{r}
 DIS_GEN_GO_PATH <- 
   left_join(disease2genes, ENTREZ2KEGG) %>% 
@@ -248,16 +438,6 @@ DISEASES <-
   dplyr::rename(DISEASE.ICD9 = DIAG) %>% 
   distinct()
 
-# parse ICD9 Codes, e.g 0010 -> 001.0
-# two leading zeros -> add dot: 00xxx -> 00.xxx
-# one leading zero -> add dot: 0xxxx -> 0.xxxxx
-###############################################
-
-x00 <- grep("^[0]{2}",DISEASES$DIAG)
-x0  <- grep("^[0]{1}[1-9]",DISEASES$DIAG)
-
-DISEASES$DISEASE.ICD9[x00] <- paste("00",substr(DISEASES$DISEASE.ICD9[x00],3,3),".",substr(DISEASES$DISEASE.ICD9[x00],4,10),sep="")
-DISEASES$DISEASE.ICD9[x0]  <- paste("0",substr(DISEASES$DISEASE.ICD9[x0],2,3),".",substr(DISEASES$DISEASE.ICD9[x0],4,10),sep="")
 DISEASES <- parseICD9(DISEASES)
 ```
 
@@ -278,6 +458,7 @@ toChar <- function(x) as_tibble(apply(x,2,function(y) trimws(toupper(y))))
 
 DISEASES          <- toChar(DISEASES)
 DISEASE2PHEWAS    <- toChar(DISEASE2PHEWAS)
+DISEASE2PHEWASHL  <- toChar(DISEASE2PHEWASHL)
 DISEASE2GENES     <- toChar(DISEASE2GENES)
 DISEASE2GO        <- toChar(DISEASE2GO)
 DISEASE2KEGG      <- toChar(DISEASE2KEGG)
@@ -291,30 +472,34 @@ DISEASE2BIOMARKER <- toChar(DISEASE2BIOMARKER)
 ```{r}
 
 
-DISEASE2PHEWAS$val <- TRUE
-DISEASE2PHEWAS     <- spread(DISEASE2PHEWAS, DISEASE.PHEWAS, val, fill = FALSE, sep = "_x_" )
+DISEASE2PHEWAS$val <- 1
+DISEASE2PHEWAS     <- spread(DISEASE2PHEWAS, DISEASE.PHEWAS, val, fill = FALSE, sep = ".x." )
 
-DISEASE2GENES$val <- TRUE
-DISEASE2GENES     <- spread(DISEASE2GENES, DISEASE.GENESYMBOL, val, fill = FALSE, sep = "_x_" )
+DISEASE2PHEWASHL$val <- 1
+DISEASE2PHEWASHL     <- spread(DISEASE2PHEWASHL, DISEASE.PHEWAS_HL, val, fill = FALSE, sep = ".x." )
 
-DISEASE2GO$val <- TRUE
-DISEASE2GO     <- spread(DISEASE2GO, DISEASE.GO, val, fill = FALSE, sep = "_x_" )
+DISEASE2GENES$val <- 1
+DISEASE2GENES     <- spread(DISEASE2GENES, DISEASE.GENESYMBOL, val, fill = 0, sep = ".x." )
 
-DISEASE2KEGG$val <- TRUE
-DISEASE2KEGG     <- spread(DISEASE2KEGG, DISEASE.PATH, val, fill = FALSE, sep = "_x_" )
+DISEASE2GO$val <- 1
+DISEASE2GO     <- spread(DISEASE2GO, DISEASE.GO, val, fill = 0, sep = ".x." )
 
-DISEASE2MESH$val <- TRUE
-DISEASE2MESH     <- spread(DISEASE2MESH, DISEASE.MESHDISEASE, val, fill = FALSE, sep = "_x_" )
+DISEASE2KEGG$val <- 1
+DISEASE2KEGG     <- spread(DISEASE2KEGG, DISEASE.PATH, val, fill = 0, sep = ".x." )
 
-DISEASE2SYMPTOMS$val <- TRUE
-DISEASE2SYMPTOMS     <- spread(DISEASE2SYMPTOMS, DISEASE.MESHSYMPTOM, val, fill = FALSE, sep = "_x_" )
+DISEASE2MESH$val <- 1
+DISEASE2MESH     <- spread(DISEASE2MESH, DISEASE.MESHDISEASE, val, fill = 0, sep = ".x." )
 
-DISEASE2BIOMARKER$val <- TRUE
-DISEASE2BIOMARKER     <- spread(DISEASE2BIOMARKER, DISEASE.BIOMARKER_REC_ID, val, fill = FALSE, sep = "_x_" )
+DISEASE2SYMPTOMS$val <- 1
+DISEASE2SYMPTOMS     <- spread(DISEASE2SYMPTOMS, DISEASE.MESHSYMPTOM, val, fill = 0, sep = ".x." )
+
+DISEASE2BIOMARKER$val <- 1
+DISEASE2BIOMARKER     <- spread(DISEASE2BIOMARKER, DISEASE.BIOMARKER_REC_ID, val, fill = 0, sep = ".x." )
 
 # print summary
-tables <- c("DISEASE2PHEWAS", "DISEASE2GENES", "DISEASE2GO", "DISEASE2KEGG", "DISEASE2MESH", "DISEASE2SYMPTOMS", "DISEASE2BIOMARKER")
+tables <- c("DISEASE2PHEWAS","DISEASE2PHEWASHL", "DISEASE2GENES", "DISEASE2GO", "DISEASE2KEGG", "DISEASE2MESH", "DISEASE2SYMPTOMS", "DISEASE2BIOMARKER")
 dims   <- c(paste(dim(DISEASE2PHEWAS),collapse=" x "),
+            paste(dim(DISEASE2PHEWASHL),collapse=" x "),
             paste(dim(DISEASE2GENES),collapse=" x "),
             paste(dim(DISEASE2GO),collapse=" x "),
             paste(dim(DISEASE2KEGG),collapse=" x "),
@@ -331,7 +516,9 @@ knitr::kable(s)
 ```{r}
 
 DISEASES.FEATMAT <- 
-  left_join(DISEASES, DISEASE2PHEWAS) %>% 
+  DISEASES %>% 
+  left_join(DISEASE2PHEWAS) %>% 
+  left_join(DISEASE2PHEWASHL) %>% 
   left_join(DISEASE2GENES) %>% 
   left_join(DISEASE2GO) %>% 
   left_join(DISEASE2KEGG) %>% 
