@@ -285,25 +285,46 @@ left_join(diag.freq, disease2genes %>% group_by(ICD9) %>% tally(sort = TRUE),by 
   left_join(ICD9GROUPING %>% dplyr::select(ICD9,ICD9_STRING) %>% distinct(), by = c("DIAG" = "ICD9"))
 ```
 
-### GO enrichment analysis
+# enrichment analysis
+
+## shared code for GO + PATHWAYS
 ```{r}
-# construct matching table
+# enrichment analysis only for diseases with at least 10 genes
+x <- disease2genes %>% group_by(ICD9) %>% tally(sort=TRUE) %>% filter(n>=10)
+disease2genes.enr <- disease2genes %>% filter(ICD9 %in% x$ICD9)
+diseases.enr <- unique(disease2genes.enr$ICD9)
+
+# diagnosis gene-sets
+disease2genes.enr <- 
+  sapply(
+    diseases.enr,
+    FUN = function(disease) disease2genes.enr %>% filter(ICD9 == disease) %>% dplyr::select(entrez)
+  )
+
+```
+
+## GO enrichment analysis
+
+### enrichment function
+```{r}
 library("org.Hs.eg.db")
+library("GSEABase")
+library("GOstats")
+
+# construct matching table
 frame       <- toTable(org.Hs.egGO)
 goframeData <-  data.frame(frame$go_id, frame$Evidence, frame$gene_id)
 goFrame     <- GOFrame(goframeData, organism <- "Homo sapiens")
 goAllFrame  <- GOAllFrame(goFrame) 
-library("GSEABase")
 gsc <- GeneSetCollection(goAllFrame, setType = GOCollection()) 
 
 # construct background for hypergemetric testing: all entrez-genes for which GO terms exist in org.Hs.eg.db
-library("GOstats")
 keys <- keys(org.Hs.eg.db, keytype = "ENTREZID")
 universe <- as_tibble(AnnotationDbi::select(org.Hs.eg.db, keys = keys, keytype="ENTREZID" ,columns=c("ENTREZID","GO")))
 universe <- universe[complete.cases(universe),] %>% dplyr::select(ENTREZID) %>% distinct()
 
 # define test params, then hypergeom. test, then fdr-correction
-GoEnrichment <- function(genes, .universe, .ontology = BP, .pvalueCutoff = 0.05, .fdrValueCutoff = 0.05) {
+GoEnrichment <- function(genes, .universe, .ontology = "BP", .pvalueCutoff = 0.05, .fdrValueCutoff = 0.05) {
   params <- GSEAGOHyperGParams(name="My Custom GSEA based annot Params",
                                geneSetCollection=gsc,
                                geneIds = genes,
@@ -314,38 +335,119 @@ GoEnrichment <- function(genes, .universe, .ontology = BP, .pvalueCutoff = 0.05,
                                testDirection = "over")
   enriched.go <- summary(hyperGTest(params))
   fdr         <- fdrtool::fdrtool(x = enriched.go$Pvalue, statistic = "pvalue", plot = FALSE, verbose = FALSE)$qval
-  enriched.go <- cbind(enriched.go,fdr)[fdr <= .fdrValueCutoff,]
+  enriched.go <- cbind(enriched.go,fdr) %>% filter( Pvalue <= .pvalueCutoff, fdr <= .fdrValueCutoff)
   
-  ifelse(length(enriched.go) >0, return(enriched.go), return("NULL"))
+  return(enriched.go)
 }
-
-
-# enrichment analysis for BP / MF / CC
-goEnrBP <- sapply(X = diseases, FUN = function(disease) disease2genes %>% filter(ICD9 == disease) %>% dplyr::select(entrez)) %>% 
-  mclapply(FUN = function(genes) GoEnrichment(genes, universe$entrez, "BP")[,1], mc.cores = 10)
-
-goEnrMF <- sapply(X = diseases, FUN = function(disease) disease2genes %>% filter(ICD9 == disease) %>% dplyr::select(entrez)) %>% 
-  mclapply(FUN = function(genes) GoEnrichment(genes, universe$entrez, "MF")[,1], mc.cores = 10)
-
-goEnrCC <- sapply(X = diseases, FUN = function(disease) disease2genes %>% filter(ICD9 == disease) %>% dplyr::select(entrez)) %>% 
-  mclapply(FUN = function(genes) try(GoEnrichment(genes, universe$entrez, "CC")[,1],TRUE), mc.cores = 10)
-hasError <- which(unlist(lapply(goEnrCC, FUN = function(x) sum(grepl("error",x,ignore.case = TRUE))>=1)))
-goEnrCC[hasError] <- NA
-
-# combine BP + MF + CC + related diseases
-goEnrAll  <- lapply(1:length(diseases), FUN = function(x) unique(c(goEnrBP[[x]], goEnrMF[[x]], goEnrCC[[x]])) )
-goPerdisease <- unlist(lapply(goEnrAll, length))
-diseases2go  <- as_tibble(data.frame( disease = unlist(mapply(rep, diseases, goPerdisease)), DISEASE.GO = unlist(goEnrAll), stringsAsFactors = FALSE))
-
-# del rows with NA's or errors: keep only those with "GO" char
-diseases2go <- diseases2go[grep(pattern = "GO",diseases2go$DISEASE.GO), ]
 ```
 
-### KEGG ENRICHTMENT
+### GO enrichment analysis
+```{r}
+# enrichment analysis for BP / MF / CC
+goEnrBP <- lapply(disease2genes.enr, FUN = function(genes) GoEnrichment(genes, universe$ENTREZID, "BP"))
+goEnrMF <- lapply(disease2genes.enr, FUN = function(genes) GoEnrichment(genes, universe$ENTREZID, "MF"))
+goEnrCC <- lapply(disease2genes.enr, FUN = function(genes) GoEnrichment(genes, universe$ENTREZID, "CC"))
 
-### WIKI ENRICHMENT
+# keep only go-id's with Count > 1 and Size > 1 to avoid over-optimistic enrichment
+# keep only go.term column
+goEnrBP <- lapply(goEnrBP, function(x) x %>% filter(Count >1, Size >1) %>% dplyr::select(Term) %>% dplyr::rename(GO = Term))
+goEnrMF <- lapply(goEnrMF, function(x) x %>% filter(Count >1, Size >1) %>% dplyr::select(Term) %>% dplyr::rename(GO = Term))
+goEnrCC <- lapply(goEnrCC, function(x) x %>% filter(Count >1, Size >1) %>% dplyr::select(Term) %>% dplyr::rename(GO = Term))
 
+# combine BP + MF + CC + related diseases
+l1 <- unlist(lapply(goEnrBP,function(x) dim(x)[1]))
+l2 <- unlist(lapply(goEnrMF,function(x) dim(x)[1]))
+l3 <- unlist(lapply(goEnrCC,function(x) dim(x)[1]))
+x1 <- data.frame(ICD9 = rep(diseases.enr,l1), unlist(goEnrBP), row.names = NULL, stringsAsFactors = F) %>% setNames(c("ICD9","GO"))
+x2 <- data.frame(ICD9 = rep(diseases.enr,l2), unlist(goEnrMF), row.names = NULL, stringsAsFactors = F) %>% setNames(c("ICD9","GO"))
+x3 <- data.frame(ICD9 = rep(diseases.enr,l3), unlist(goEnrCC), row.names = NULL, stringsAsFactors = F) %>% setNames(c("ICD9","GO"))
+disease2go <- rbind(x1,x2,x3)
+disease2go <- NormalizeStrings(disease2go)
+disease2go$GO <- make.names(disease2go$GO)
+disease2go <- disease2go %>% distinct()
+rm(l1,l2,l3,x1,x2,x3)
+```
 
+## PATHWAY ENRICHMENT
+
+### PATHWAY enrichment function
+```{r}
+PathEnrichment <- function(genes, entrez2path, .pvalValueCutoff = 0.05, .fdrValueCutoff = 0.05) {
+#’ @param genes vector of entrez-ids for which enrichment analysis should be computed
+#’ @param entrez2path dataframe with two columns \code{ENTREZ} and \code{PATH}
+#’ @param .fdrValueCutoff cutoff threshold of the false-discovery-rate
+  pathsInGenset <- entrez2path %>% filter(ENTREZID %in% genes) %>% dplyr::select(PATH) %>% distinct()
+  genesPerPath  <- entrez2path %>% filter(PATH %in% pathsInGenset$PATH) %>% dplyr::select(PATH, ENTREZID) %>% distinct() %>% group_by(PATH) %>% tally() 
+  N             <- as.numeric(n_distinct(entrez2path$ENTREZID)) # background for hyperG-Test
+
+if(length(pathsInGenset$PATH) > 0) {
+  result <- c()
+  for(path in unique(pathsInGenset$PATH)) {
+    white.all     <- entrez2path %>% filter(PATH == path) %>% dplyr::select(ENTREZID) %>% distinct() %>% unlist() %>%  as.character()
+    size   <- length(white.all)
+    count  <- sum(genes %in% white.all)
+    pval   <- phyper(count - 1e-3, size, N-size, length(genes), lower.tail = FALSE)
+    result <- rbind(result, data.frame(path, count, size, pval))
+  }
+  fdr    <- fdrtool::fdrtool(x = result$pval, statistic = "pvalue", plot = FALSE, verbose = FALSE)$qval
+  result <- cbind(result,fdr) %>% filter( pval <= .pvalValueCutoff, fdr <= .fdrValueCutoff)
+  result <- result[order(result$pval),]
+  return(result)
+}
+}
+```
+
+#### KEGG ENRICHTMENT
+```{r}
+keys <- keys(org.Hs.eg.db, keytype = "ENTREZID")
+kegg2entrez <- as_tibble(AnnotationDbi::select(org.Hs.eg.db, keys = keys, keytype="ENTREZID" ,columns=c("ENTREZID","PATH")))
+kegg2entrez <- kegg2entrez[complete.cases(kegg2entrez),]
+
+# disease2genes.enr <- lapply(disease2genes.enr, FUN = function(x) (PathEnrichment(x, kegg2entrez))) # uncomment this to check details
+disease2path.enr <- lapply(disease2genes.enr, FUN = function(x) (PathEnrichment(x, kegg2entrez))[,1] )
+disease2path.enr <- lapply(disease2path.enr, as.character)
+
+# attached enriched paths to diseases
+l <- unlist(lapply(disease2path.enr, length))
+disease2path <- data.frame(ICD9 = rep(diseases.enr,l), PATH = unlist(disease2path.enr), stringsAsFactors = F, row.names = NULL)
+
+# id to name
+load("~/epilepsie_preprocessing_descrStat/data/KEGG/kegg_id2names.RData")
+disease2path <- 
+  left_join(disease2path, kegg_id2names, by = c("PATH" = "KEGG.PATH.ID")) %>%
+  dplyr::select(-PATH) %>% 
+  dplyr::rename(PATH = KEGG.PATH.NAME)
+
+# normalize Strings
+disease2path$PATH <- make.names(disease2path$PATH)
+
+# identifier
+disease2kegg <- disease2path
+```
+
+#### WIKI ENRICHMENT
+```{r}
+load("~/epilepsie_preprocessing_descrStat/data/wikipathways/entrez2wiki.RData")
+
+# disease2genes.enr <- lapply(disease2genes.enr, FUN = function(x) (PathEnrichment(x, entrez2wiki))) # uncomment this to check details
+disease2path.enr <- lapply(disease2genes.enr, FUN = function(x) (PathEnrichment(x, entrez2wiki))[,1] )
+disease2path.enr <- lapply(disease2path.enr, as.character)
+
+# attached enriched paths to diseases
+l <- unlist(lapply(disease2path.enr, length))
+disease2path <- data.frame(ICD9 = rep(diseases.enr,l), PATH = unlist(disease2path.enr), stringsAsFactors = F, row.names = NULL)
+
+# normalize Strings
+disease2path$PATH <- make.names(disease2path$PATH)
+
+# identifier
+disease2wiki <- disease2path
+```
+
+#### combine KEGG + WIKI path
+```{r}
+disease2path <- rbind(disease2kegg,disease2wiki) %>% distinct()
+```
 
 
 ## ENTREZ2 ...KEGG ...GO
@@ -380,8 +482,8 @@ rm(e)
 * DISEASE2BIOMARKER
 * disease2genes
 * DISEASE2SYMPTOMS
-* ENTREZ2KEGG
-* ENTREZ2GO
+* disease2path (enriched)
+* disease2go (enriched)
 
 ```{r}
 DISEASE2PHEWAS    <- DISEASE2PHEWAS %>% dplyr::select(ICD9, PHEWAS_STRING) %>% distinct() %>% dplyr::rename(DISEASE.PHEWAS = PHEWAS_STRING)
