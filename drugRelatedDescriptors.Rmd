@@ -2,510 +2,240 @@
 title: "drugRelatedDescriptors"
 subtitle: ""
 author: "Thomas Gerlach"
-date: "28 OCT 2016"
+date: ""
 output: html_document
 ---
 
-```{r}
-###############################################################################
-# $HeadURL:  drugRelatedDescriptors.Rmd
-# $Rev:  
-# $Date:     28 OCT 2016
-# $Author:   Thomas Gerlach
-# -----------------------------------------------------------------------------
-# CATEG:   incidence, prevalence
-# DESCR:   see drugRelatedDescriptors.uxf
-# KEYS : 
-# INPUT:
-# OUT  : 
-# REQ  : 
-# NOTES: 
-# FILTERS: 
-###############################################################################
-
-# drug filtering -> chunk 15
-
-```
-
-```{r setup, include=FALSE, echo = FALSE }
-# set knitr defaults
-knitr::opts_chunk$set(echo = FALSE, include = FALSE, fig.width=20, fig.height=10)
-```
-  
-# load resources
-```{r start, echo=FALSE}
+# setup
+```{r start, echo=FALSE, include = FALSE}
+rm(list=setdiff(ls(), "TABLE04SAS7BDAT"))
+knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7) # markdown
 source("z_start.R") # initalize netezza DB, load core data
 if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
-PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
 ```
 
-# set and load global variables
-```{r, echo = FALSE, fig.width=20, fig.height=10}
-# data
-phew2custom <- read.csv2("~/epilepsie_preprocessing_descrStat/data/phewas_nonEpi_gt1percent.csv")
-
-# # main co-morbidities
-mainComorb <- c(
-  "heart and circular system",
-  "malaise, nausea, vertigo",
-  "metabolic diseases",
-  "migrane, headache",
-  "Neurological disorders",
-  "psychatric and psychological disorders",
-  "substance addiction and disorders")
-
-main_Phew_highlvl    <- as.character(phew2custom$PHEWAS_STRING_HL[phew2custom$customised_high_level2 %in% mainComorb])
-
-# # phewas epilepsy-only terms
-phew_epiOnly <- c(
-  "Convulsions",
-  "Epilepsy, recurrent seizures, convulsions",
-  "Partial epilepsy",
-  "Epilepsy",
-  "Generalized convulsive epilepsy"
-)
-
+# global params
+```{r}
+params <- vector("list")
+params$thres.subst.freq   <- 2
 ```
-
-# apply filters
-```{r standardize population, echo=FALSE}
-
-source("functions/n_patient_per_period.R")
-source( "functions/patient_monthly_enrolment.R")
-source("functions/patient_nonNegative_DAYSUPP.R")
-source("functions/setAEDFlag.R")
-source("functions/aggregate_AED_substancenames.R")
-source("functions/add_Phew_PhewHighlevel.R")
-source("functions/disOnt_ICD9_2_MESH.R")
-
-# # reset PATIENT_AGE_REGION filters: 0y FU
-# PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
-
-# # re-compute missing IXDAYS for all observations
-newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
-PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
-
-# # # Keep only patients within valid time period 
-PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
-
-# # Add Age and Regional Information
-PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
-
-# # # only keep patients without gaps within the relevant observation period
-# PATIENTS_AGE_REGION <- filter_patient_gapFreePeriod(PATIENTS_AGE_REGION,gapFreePeriod = "quarter")
-
-# # patient monthly enrolment: health insurance
-# PATIENTS_AGE_REGION <- patient_filter_healthCareEnrolment(PATIENTS_AGE_REGION)
-
-# # only patients with non-negative DAYSUP
-PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
-
-# # set AED flag
-PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
-
-# # aggregate AED SUBSTANCENAME's
-# PATIENTS_AGE_REGION <- aggregate_AED_substancenames(PATIENTS_AGE_REGION)
-
-# # match PHEWAS terms to ICD9 terms
-PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
-
-# # PATIENTS_AGE_REGION backup for population size computations
-# PATIENTS_AGE_REGION_bak <- PATIENTS_AGE_REGION
-
-
-```
-
-
-
 # script specific functions
 ```{r}
-parseColByIdx <- function(data, colname,idx.key,sep=";") {
+
+####
+parseColByIdx <- function(data, colname,sep=";") {
   
-  colidx          <- which(colnames(data) %in% colname)
-  row             <- data[,colidx] != "" | !is.na(data[,colidx])
-  y.data          <- data[row,]
-  y               <- sapply(y.data[,colidx], function(x) strsplit(x,split = sep))
-  y.length        <- sapply(y,length)
-  y.data          <- y.data[rep(seq_len(nrow(y.data)), y.length),]
-  y.data[,colidx] <- unlist(y)
+  keyIdx  <- which(colnames(data) %in% colname)
+  isEmpty <- data[,keyIdx] == "" & is.na(data[,keyIdx])
+  data    <- data[!isEmpty,]
   
-  data     <- data[,-colidx]
-  y.data   <- y.data[,c(idx.key,colidx)]
-  data.new <- left_join(data,y.data)
-  return(unique(data.new))
+  parse         <- data[,keyIdx]
+  parsed.list   <- sapply(parse, function(x) strsplit(x,split = sep))
+  reps          <- sapply(parsed.list,length)
+  
+  parsed        <- unlist(parsed.list)
+  cnames        <- c(colnames(data[,-keyIdx]),colname)
+  
+  row.reps      <- unlist(mapply(rep, 1:length(reps), reps))
+  data.new      <- cbind(data[row.reps, - keyIdx], parsed)
+  colnames(data.new) <- cnames
+  
+  data.new <- sapply(data.new,function(x) as.character(x)) %>% as_tibble() %>% distinct()
+  
+  return(data.new)
+  
 }
 ###################
-parseMe <- function(x) c(sum(grepl(";",x)), sum(grepl(",",x)))
-###################
-parseICD9 <- function(icd9.unparsed) {
-  
-  ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "") %>%   distinct() %>%  collect()
-  ICD9GROUPING <- as_tibble(apply(ICD9GROUPING,2,as.character))
-  ICD9 <- as_tibble(cbind(ICD9c = ICD9GROUPING$ICD9, ICD9n = ICD9GROUPING$ICD9 %>% as.character() %>% as.numeric()))
-  ICD9 <- data.frame(ICD9c = ICD9GROUPING$ICD9, ICD9n = as.numeric(as.character(ICD9GROUPING$ICD9)))
-  
-  parsed <- c()
-  
-  for(k in 1:length(icd9.unparsed)) { 
-    
-     if(k %% 100 == 0) print(k)
-    #print(k)
-    x1 <- strsplit(icd9.unparsed[k],",") %>% unlist() %>% strsplit("-")
-    x2 <- unlist(lapply(x1,length))
-    
-    # parse and attach non-interval elements
-    x2.nonint <- which(x2==1)
-    if(length(x2.nonint)>0){
-      x2.nonint <- trimws(unlist(x1[x2.nonint]))
-      parsed    <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=x2.nonint,row.names=NULL))
-    }
-    
-    # parse and attach interval-elements (e.g "120-121")
-    x2.interv <- which(x2==2)
-    
-    if(length(x2.interv) >0) {
-      
-      for (l in 1:length(x2.interv)) {
-        x3 <- unlist(x1[[x2.interv[l]]])
-        lb <- as.numeric(x3[1])
-        rb <- as.numeric(x3[2])
-        if(rb == floor(rb)) rb <- rb + 1 - 1e-3
-        x3.ICD9.idx <- which(between(ICD9$ICD9n,lb,rb))
-        parsed      <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=as.character(ICD9$ICD9c[x3.ICD9.idx]),row.names=NULL))
-      }
-    }
+# check for delimiters ";" and ","
+parseMe <- function(x) {
+  delim <- c(";",",","|")
+  n <- c(sum(grepl(";", x)), sum(grepl(",", x)), sum(grepl("\\|", x)))
+  n.delim <- data.frame(delim,n)
+  return(n.delim)
   }
-return(parsed)
-}
 
-
+##################
+NormalizeStrings <- function(y) sapply(y, function(x) trimws(toupper(as.character(x)))) %>% as_tibble()
 ```
 
-# WAY A
+# filter patients
+```{r standardize population, echo=FALSE}
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
+```
 
-## DRUGSYNONYMS, parsing, preprocessing
+# frequent substances only
+```{r start, echo=FALSE}
+PATIENTS_AGE_REGION <- 
+  PATIENTS_AGE_REGION %>% 
+  dplyr::select(ENROLID, SUBSTANCENAME, PROPRIETARYNAME, PHARMCLS1) %>% 
+  distinct()
+
+PATIENTS_AGE_REGION <- parseColByIdx(PATIENTS_AGE_REGION,"SUBSTANCENAME",sep = ";")
+subst.freq          <- SUBSTANCE_FREQUENCY(PATIENTS_AGE_REGION)
+relevant.subst      <- subst.freq %>% filter(freq >= params$thres.subst.freq) %>% dplyr::select(SUBSTANCENAME)
+
+PATIENTS.DRUGS1 <- 
+  PATIENTS_AGE_REGION %>% filter(SUBSTANCENAME %in% relevant.subst$SUBSTANCENAME) %>% 
+ dplyr::select(SUBSTANCENAME, PROPRIETARYNAME, PHARMCLS1) %>% 
+  distinct()
+
+PATIENTS.DRUGS1 <- as_tibble(apply(PATIENTS.DRUGS1,2,function(x) trimws(toupper(x))))
+```
+
+## omit emtpy PHARMCLS1 entries, if drug has at least an non-empty  entry
+```{r}
+x1 <- PATIENTS.DRUGS1 %>% filter(PHARMCLS1 != "") %>%dplyr::select(SUBSTANCENAME) %>% distinct()
+x2 <- PATIENTS.DRUGS1 %>% filter(SUBSTANCENAME %in% x1$SUBSTANCENAME) %>%dplyr::select(SUBSTANCENAME, PHARMCLS1) %>% distinct() %>% 
+  group_by(SUBSTANCENAME) %>% tally() %>% filter(n>1)
+PATIENTS.DRUGS1 <- PATIENTS.DRUGS1 %>% filter( !(PHARMCLS1 == "" & SUBSTANCENAME %in% x2$SUBSTANCENAME) ) %>% distinct()
+rm(x1,x2)
+```
+
+# add Synonyms
 ```{r}
 DRUG2SYNONYMS <- tbl(src,"REFERENCE.DRUGSYNONYMS") %>% collect() 
 DRUG2SYNONYMS <- DRUG2SYNONYMS[DRUG2SYNONYMS$TTDDRUGID != "",]
-DRUG2SYNONYMS <- apply(DRUG2SYNONYMS,2, function(x) trimws(toupper(x)))
 DRUG2SYNONYMS <- as_tibble(apply(DRUG2SYNONYMS,2, as.character),stringsAsFactors = FALSE)
-glimpse(DRUG2SYNONYMS)
+DRUG2SYNONYMS <- parseColByIdx(DRUG2SYNONYMS,"SYNONYMS")
+DRUG2SYNONYMS <- apply(DRUG2SYNONYMS,2, function(x) trimws(toupper(x))) %>% as_tibble() %>% distinct()
 
-# parse SYNONYMS
-################
-parseMe(DRUG2SYNONYMS$SYNONYMS)
-DRUG2SYNONYMS <- parseColByIdx(DRUG2SYNONYMS,"SYNONYMS",1)
-
-# parse DRUGNAME
-################
-parseMe(DRUG2SYNONYMS$DRUGNAME)
-DRUG2SYNONYMS <- parseColByIdx(DRUG2SYNONYMS,"DRUGNAME",1)
+PATIENTS.DRUGS2 <-
+  left_join(
+  PATIENTS.DRUGS1,
+  DRUG2SYNONYMS %>% dplyr::select(-TTDDRUGID) %>% distinct(),
+  by = c("SUBSTANCENAME" = "DRUGNAME")
+  )
 ```
 
-## DRUG2INDICATIONS, parsing, preprocessing
+# SUBSTANCENAME -> TTDDRUGID, SUBSTANCENAME -> names
+
+## PATIENTS.DRUGS2 -> PATIENTS.DRUGS3
 ```{r}
-DRUG2INDICATIONS <- tbl(src,"REFERENCE.DRUG2INDICATIONS") %>% collect() 
-glimpse(DRUG2INDICATIONS)
-DRUG2INDICATIONS <- DRUG2INDICATIONS %>% dplyr::select(DRUG_DESC, ICD9) %>% distinct()
-parseMe(DRUG2INDICATIONS$DRUG_DESC)
-parseMe(DRUG2INDICATIONS$ICD9)
-DRUG2INDICATIONS$DRUG_DESC <- trimws(toupper(DRUG2INDICATIONS$DRUG_DESC))
-```
-
-## DRUG2INDICATIONSTTD, parsing , preprocessing
-```{r}
-D2I <- tbl(src,"REFERENCE.DRUG2INDICATIONSTTD") %>% filter(TTDDRUGID != "", LNM != "") %>%  
-  dplyr::select(TTDDRUGID, LNM, ICD9) %>% distinct() %>%  collect()
-bugged.rows <- c("280-285, 585.9585.1-585.5403",
-                 "272.6, 584, 585, 585.9585.1-585.5403",
-                 "584, 585, 585.9585.1-585.5403")
-bugged.rows <- mapply(grep, pattern=bugged.rows, MoreArgs=list(x=D2I$ICD9))
-bugged.rows <- as.numeric(unlist(bugged.rows))
-
-D2I           <- D2I[-bugged.rows,]
-D2I           <- apply(D2I,2, function(x) toupper(trimws(x))) 
-D2I           <- as_tibble(D2I)
-glimpse(D2I)
-D2I$ICD9[D2I$ICD9=="."] <- NA
-D2I <- D2I[complete.cases(D2I),]
-
-# parse LNM
-###########
-parseMe(D2I$LNM)
-
-# parse ICD9
-############
-parseMe(D2I$ICD9)
-icd9.unparsed <- unique( D2I$ICD9[!is.na(D2I$ICD9)] )
-icd9.parsed <- parseICD9( icd9.unparsed) 
-
-# match parsed ICD9 to D2I
-D2I <- left_join(D2I, as.data.frame(icd9.parsed,stringsAsFactors=FALSE),by=c("ICD9"="V1"))
-D2I <- D2I %>% dplyr::select(-ICD9) %>% dplyr::rename(ICD9 = ICD9.y) %>% distinct()
-
-```
-
-## DRUG2INDICATIONSTTD <-> DRUG2SYNONYMS and DRUG2INDICATIONS <-> DRUG2SYNONYMS
-```{r}
-
-# DRUG2INDICATIONSTTD <-> DRUG2SYNONYMS
-DRD.A.1   <- left_join(DRUG2SYNONYMS, D2I)
-DRD.A.1   <- 
+PATIENTS.DRUGS3 <- 
   rbind(
-    DRD.A.1 %>% dplyr::select(TTDDRUGID, SYNONYMS, ICD9) %>%  dplyr::rename(DRUGNAME = SYNONYMS) %>% distinct(),
-    DRD.A.1 %>% dplyr::select(TTDDRUGID, DRUGNAME, ICD9) %>%  distinct(),
-    DRD.A.1 %>% dplyr::select(TTDDRUGID, LNM, ICD9)      %>%  dplyr::rename(DRUGNAME = LNM) %>% distinct()
+    PATIENTS.DRUGS2 %>% dplyr::select(SUBSTANCENAME,PHARMCLS1) %>% mutate(names=SUBSTANCENAME),
+    PATIENTS.DRUGS2 %>% dplyr::select(SUBSTANCENAME,PHARMCLS1, PROPRIETARYNAME) %>% dplyr::rename(names=PROPRIETARYNAME),
+    PATIENTS.DRUGS2 %>% dplyr::select(SUBSTANCENAME,PHARMCLS1, SYNONYMS) %>% dplyr::rename(names=SYNONYMS)
   ) %>% 
   distinct()
 
-DRD.A.2 <- left_join( DRD.A.1 %>% dplyr::select(-ICD9) %>% distinct(), DRUG2INDICATIONS, by=c("DRUGNAME"="DRUG_DESC"))
-DRD.A.2 <- DRD.A.2 %>% filter(!is.na(ICD9))
-DRD.A.2 <- rbind(DRD.A.1, DRD.A.2) %>% distinct()
+PATIENTS.DRUGS3 <- PATIENTS.DRUGS3[complete.cases(PATIENTS.DRUGS3),]
+```
 
-# DRUG2INDICATIONS <-> DRUG2SYNONYMS
-DRD.A.3.1 <- left_join(DRUG2SYNONYMS, DRUG2INDICATIONS, by = c("SYNONYMS"="DRUG_DESC")) %>% filter(!is.na(ICD9))
-DRD.A.3.2 <- left_join(DRUG2SYNONYMS, DRUG2INDICATIONS, by = c("DRUGNAME"="DRUG_DESC")) %>% filter(!is.na(ICD9))
+## DRUG2SYNONYMS -> DRUG2SYNONYMS2
+```{r}
+DRUG2SYNONYMS2 <- DRUG2SYNONYMS %>% gather(colnames,names,-TTDDRUGID) %>% dplyr::select(-colnames) %>% distinct()
+```
 
-DRD.A.3.1 <- 
+## DRD1
+```{r}
+DRD1 <- inner_join(PATIENTS.DRUGS3, DRUG2SYNONYMS2)
+```
+
+## DRD2
+```{r}
+DRD2 <- DRD1 %>% dplyr::select(TTDDRUGID, names) %>% distinct()
+```
+
+# DRUG -> INDICATION
+
+## DRUG2INDICATIONS -> DRUG2INDICATIONS2
+```{r}
+DRUG2INDICATIONS2 <- 
+  tbl(src,"REFERENCE.DRUG2INDICATIONS") %>% 
+  filter(HSP == 1) %>% 
+  dplyr::select(DRUG_DESC, ICD9) %>%
+  distinct() %>% 
+  collect() 
+
+DRUG2INDICATIONS2 <- NormalizeStrings(DRUG2INDICATIONS2)
+DRUG2INDICATIONS2 <- parseColByIdx(DRUG2INDICATIONS2,"ICD9",sep="\\|")
+DRUG2INDICATIONS2$DRUG_DESC <- trimws(toupper(DRUG2INDICATIONS2$DRUG_DESC))
+DRUG2INDICATIONS2$ICD9 <- as.character(DRUG2INDICATIONS2$ICD9)
+
+# omit E- and V- ICD9-codings
+E <- grep("E",DRUG2INDICATIONS2$ICD9)
+V <- grep("V",DRUG2INDICATIONS2$ICD9)
+DRUG2INDICATIONS2 <- DRUG2INDICATIONS2[-c(E,V),]
+rm(E,V)
+```
+
+## DRD2 + DRUG2INDICATIONS2  = drug2indications1
+```{r}
+drug2indications1 <- inner_join(DRD2, DRUG2INDICATIONS2, by=c("names"="DRUG_DESC")) %>% dplyr::select(-names) %>% distinct()
+```
+
+## ICD9GROUPING -> ICD9GROUPING2
+### PHEWAS_CODE -> PHEWAS_HIGHLEVEL_CODE
+### PHEWAS_HIGHLEVEL_CODE -> PHEWAS_HIGHLEVEL_STRING
+
+```{r}
+ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% dplyr::select(ICD9, PHEWAS_CODE, PHEWAS_STRING) %>% distinct() %>% collect()
+ICD9GROUPING <- NormalizeStrings(ICD9GROUPING)
+ICD9GROUPING$ICD9 <- as.character(ICD9GROUPING$ICD9)
+ICD9GROUPING$PHEWAS_STRING <- as.character(ICD9GROUPING$PHEWAS_STRING)
+ICD9GROUPING$PHEWAS_STRING <- trimws(toupper(ICD9GROUPING$PHEWAS_STRING))
+
+# omit E- and V- ICD9-codings
+E <- grep("E",ICD9GROUPING$ICD9)
+V <- grep("V",ICD9GROUPING$ICD9)
+ICD9GROUPING <- ICD9GROUPING[-c(E,V),]
+rm(E,V)
+
+# erase / unclear missing values
+ICD9GROUPING <- ICD9GROUPING %>% filter(ICD9 != "", !is.na(PHEWAS_CODE), PHEWAS_STRING != "", PHEWAS_STRING != "1", PHEWAS_STRING != "-")
+
+# PHEWAS_CODE -> PHEWAS_HIGHLEVEL_CODE
+# PHEWAS_HIGHLEVEL_CODE -> PHEWAS_HIGHLEVEL_STRING
+ICD9GROUPING$PHEWAS_CODE <- as.numeric(ICD9GROUPING$PHEWAS_CODE)
+
+PHEWAS_HL <- 
+  ICD9GROUPING %>% 
+  mutate(PHEWAS_floor = floor(PHEWAS_CODE)) %>% 
+  mutate(isHighlevel = PHEWAS_floor == PHEWAS_CODE) %>% 
+  filter(isHighlevel == TRUE) %>% 
+  dplyr::select(PHEWAS_CODE, PHEWAS_STRING) %>%
+  distinct() %>% 
+  dplyr::rename(PHEWAS_CODE_HL = PHEWAS_CODE, PHEWAS_STRING_HL = PHEWAS_STRING)
+
+ICD9GROUPING <- 
+  ICD9GROUPING %>% 
+  mutate(PHEWAS_CODE_HL = floor(PHEWAS_CODE)) 
+
+# ICD9GROUPING2
+ICD9GROUPING2 <- inner_join(ICD9GROUPING, PHEWAS_HL)
+```
+
+## drug2indications1 + ICD9GROUPING2 = drug2indications
+```{r}
+drug2indications <-  inner_join(ICD9GROUPING2, drug2indications1, by="ICD9") %>% dplyr::select(-ICD9) %>% distinct()
+```
+
+# DRUG -> side effects
+
+## DRUG2SIDEEFFECTS + DRUGIDS -> ... -> DRUG2SIDEEFFECTS3
+
+### DRUG2SIDEEFFECTS -> DRUG2SIDEEFFECTS2
+```{r}
+DRUG2SIDEEFFECTS <- tbl(src,"REFERENCE.DRUG2SIDEEFFECTS") %>% 
+  dplyr::select(STITCHID_FLAT, STITCHID_STEREO, FREQUENCY, MEDDRA) %>% 
+  distinct() %>%  collect()
+
+DRUG2SIDEEFFECTS <- NormalizeStrings(DRUG2SIDEEFFECTS)
+DRUG2SIDEEFFECTS <- 
   rbind(
-    DRD.A.3.1 %>% dplyr::select(-SYNONYMS) %>% distinct(),
-    DRD.A.3.1 %>% dplyr::select(-DRUGNAME) %>% dplyr::rename(DRUGNAME = SYNONYMS) %>% distinct()
+    DRUG2SIDEEFFECTS %>%dplyr::select(-STITCHID_STEREO) %>% dplyr::rename(STITCHID = STITCHID_FLAT ),
+    DRUG2SIDEEFFECTS %>%dplyr::select(-STITCHID_FLAT) %>% dplyr::rename(STITCHID = STITCHID_STEREO )
   ) %>% distinct()
 
-DRD.A.3.2 <- 
-  rbind(
-    DRD.A.3.2 %>% dplyr::select(-SYNONYMS) %>% distinct(),
-    DRD.A.3.2 %>% dplyr::select(-DRUGNAME) %>% dplyr::rename(DRUGNAME = SYNONYMS) %>% distinct()
-  ) %>% distinct()
-
-DRD.A.3 <- rbind(DRD.A.3.1, DRD.A.3.2) %>% distinct()
-
-#
-DRD.A.4 <- rbind(DRD.A.2, DRD.A.3) %>% distinct()
-
-# tidy up
-rm(DRD.A.2, DRD.A.3.1, DRD.A.3.2, DRD.A.3 )
-
-```
-
-# WAY 0
-
-## PATIENTS_AGE_REGION, capture drugfeatures
-```{r}
-PATIENTS.DRUGS <-
-  PATIENTS_AGE_REGION  %>%
-  filter(SUBSTANCENAME != "") %>% 
-  dplyr::select(SUBSTANCENAME, PROPRIETARYNAME, PHARMCLS1) %>% 
-  distinct()
-glimpse(PATIENTS.DRUGS)
-
-PATIENTS.DRUGS <- as_tibble(apply(PATIENTS.DRUGS,2,function(x) trimws(toupper(x))))
-```
-
-
-## DRUGSYNONYMSDRUGBANK, parsing, preprocessing
-```{r}
-# parse column Synonyms
-DRUGSYNONYMSDRUGBANK <- read.delim(file="data/DrugBank/DrugSynonymsDrugBank.csv",sep = ",",header = TRUE,stringsAsFactors = FALSE)
-glimpse(DRUGSYNONYMSDRUGBANK)
-DRUGSYNONYMSDRUGBANK <- DRUGSYNONYMSDRUGBANK %>% dplyr::select(DrugBank.ID, Common.name,Synonyms) %>% distinct()
-DRUGSYNONYMSDRUGBANK <- parseColByIdx(as_tibble(DRUGSYNONYMSDRUGBANK),colname = "Synonyms",idx.key = 1,sep = "\\|")
-glimpse(DRUGSYNONYMSDRUGBANK)
-DRUGSYNONYMSDRUGBANK <- DRUGSYNONYMSDRUGBANK[!is.na(DRUGSYNONYMSDRUGBANK$Synonyms),]
-
-# string standardisation
-DRUGSYNONYMSDRUGBANK <- as_tibble(apply(DRUGSYNONYMSDRUGBANK,2, function(x) trimws(toupper(x)))) %>% distinct()
-DRUGSYNONYMSDRUGBANK <- parseColByIdx(DRUGSYNONYMSDRUGBANK,colname = "Synonyms",1)
-```
-
-## DRUGSYNONYMSDRUGBANK <-> PATIENTS.DRUGS -> PATIENTS.DRUGS
-```{r}
-
-PATIENTS.DRUGS.1 <- left_join(PATIENTS.DRUGS, DRUGSYNONYMSDRUGBANK, by=c("SUBSTANCENAME"="Common.name"))
-PATIENTS.DRUGS.2 <- left_join(PATIENTS.DRUGS, DRUGSYNONYMSDRUGBANK, by=c("PROPRIETARYNAME"="Common.name"))
-PATIENTS.DRUGS <- rbind(PATIENTS.DRUGS.1, PATIENTS.DRUGS.2) %>% distinct()
-rm(PATIENTS.DRUGS.1, PATIENTS.DRUGS.2)
-
-```
-
-## PATIENTS.DRUGS <-> DRD.x -> DRD.x+1
-```{r}
-n0 <- PATIENTS.DRUGS %>% dplyr::select(SUBSTANCENAME, PHARMCLS1)
-n1 <- cbind(n0, PATIENTS.DRUGS %>% dplyr::select(SUBSTANCENAME) %>% dplyr::rename(DRUGNAME = SUBSTANCENAME))
-n2 <- cbind(n0, PATIENTS.DRUGS %>% dplyr::select(PROPRIETARYNAME) %>% dplyr::rename(DRUGNAME = PROPRIETARYNAME))
-n3 <- cbind(n0, PATIENTS.DRUGS %>% dplyr::select(Synonyms) %>% dplyr::rename(DRUGNAME = Synonyms))
-PATIENTS.DRUGS <- as_tibble(unique(rbind(n1,n2,n3)))
-PATIENTS.DRUGS <- PATIENTS.DRUGS[!is.na(PATIENTS.DRUGS$DRUGNAME),]
-rm(n0,n1,n2,n3)
-
-DRD.W0.1 <- inner_join(PATIENTS.DRUGS, DRD.A.4) %>% dplyr::select(-DRUGNAME) %>% distinct()
-
-# add drugname from DRUG2SYNONYMS
-DRD.W0.1 <- left_join(DRD.W0.1, DRUG2SYNONYMS %>% dplyr::select(-SYNONYMS)) %>% distinct()
-```
-
-# drug filter
-```{r}
-# subst.freq <- 
-#   PATIENTS_AGE_REGION %>% 
-#   filter(SUBSTANCENAME != "") %>% 
-#   dplyr::select(SUBSTANCENAME, ENROLID) %>% 
-#   distinct() %>% 
-#   group_by(SUBSTANCENAME) %>% 
-#   tally(sort = TRUE)
-# 
-# nPat              <- n_distinct(PATIENTS_AGE_REGION$ENROLID)
-# subst.freq$n.freq <- subst.freq$n/nPat
-# subst.freq.f      <- subst.freq %>% filter(n.freq >= 0.05)
-
-load("~/epilepsie_preprocessing_descrStat/atogQueries/AEDs.RData")
-DRD.W0.1 <- DRD.W0.1 %>% filter(SUBSTANCENAME %in% AEDs$SUBSTANCENAME)
-
-n_distinct(DRD.W0.1$SUBSTANCENAME)
-```
-
-## add PHEWAS-Code
-```{r}
-ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "", PHEWAS_CODE != "") %>% 
-  dplyr::select(ICD9, PHEWAS_CODE) %>% distinct() %>% collect()
-DRD.W0.2 <- left_join(DRD.W0.1, ICD9GROUPING)
-n_distinct(DRD.W0.2$ICD9)
-n_distinct(DRD.W0.2$PHEWAS_CODE)
-
-```
-
-# WAY1
-
-## DISEASE2GENES, parsing, preprocessing
-```{r}
-load("~/epilepsie_preprocessing_descrStat/output/disease2genes_2016-10-24.RData")
-disease2genes <- disease2genes %>% dplyr::rename(score.Disease2Gene = score) %>% distinct()
-glimpse(disease2genes)
-
-# gene subelection by gene-disease-score
-# (score as least as big as the minimal score of curated gene-disease associations)
-min_curated_score <- disease2genes %>% filter(source_descr == "curated") %>% dplyr::select(score.Disease2Gene)
-min_curated_score <- min(min_curated_score$score.Disease2Gene)
-disease2genes <- disease2genes %>% filter(score.Disease2Gene >= min_curated_score, NofPmids >= 10)
-
-# drop unessential columns
-disease2genes <- disease2genes %>% dplyr::select(entrez, ICD9) %>% distinct()
-```
-
-## DISEASE2GENES
-```{r}
-# attach to DRD
-DRD.W1.1 <- left_join(DRD.W0.2, disease2genes)
-```
-
-## DRD, DRUG2SIDEEFFECTS
-```{r}
-# DRD.W1.1$UMLS <- trimws(toupper(DRD.W1.1$UMLS))
-# DRD.W1.2 <- left_join(DRD.W1.1, DRUG2SIDEEFFECTS, by="UMLS")
-# glimpse(DRD.W1.2)
-# DRD.W1.2 <- DRD.W1.2 %>% filter(!is.na(UMLS)) %>% distinct()
-
-```
-
-## add GO Terms
-```{r}
-# get matching table
-####################
-
-library(org.Hs.eg.db)
-
-e            <- unique(DRD.W1.1$entrez[!is.na(DRD.W1.1$entrez)])
-entrez2go    <- select(org.Hs.eg.db, keys=e, keytype="ENTREZID" ,columns=c("ENTREZID","GO"))
-entrez2go    <- entrez2go %>% dplyr::select(ENTREZID, GO, ONTOLOGY) %>% distinct()
-entrez2go$GO <- gsub("GO:","",entrez2go$GO)
-
-# match DRD.W1.2 <-> entrez2go
+# compute frequency categories
 ##############################
-DRD.W1.3 <- left_join(
-  DRD.W1.1 %>%  distinct(),
-  entrez2go,
-  by=c("entrez"="ENTREZID"))
-
-# reformat GO column
-# DRD.W1.3    <- DRD.W1.3 %>% dplyr::select(-entrez) %>% distinct()
-x              <- !is.na(DRD.W1.3$GO)
-DRD.W1.3$GO[x] <- paste(DRD.W1.3$ONTOLOGY[x],".",DRD.W1.3$GO[x],sep="")
-DRD.W1.3       <- DRD.W1.3 %>% dplyr::select(-ONTOLOGY)
-
-# add kegg pathways
-###################
-library(help=org.Hs.eg.db)
-
-keys         <- unique(DRD.W1.3$entrez[!is.na(DRD.W1.3$entrez)])
-mapped_genes <- mappedkeys(org.Hs.egPATH)
-mapped_genes <- mapped_genes[mapped_genes %in% keys]
-kegg         <- as.list(org.Hs.egPATH[mapped_genes])
-kegg.l       <- sapply(kegg,length)
-entrez       <- mapply(rep,mapped_genes,kegg.l)
-entrez2kegg  <- as_tibble(cbind(entrez=unlist(entrez),kegg_id = unlist(kegg)))
-
-DRD.W1.3 <- left_join(DRD.W1.3, entrez2kegg)
-DRD.W1.3 <- DRD.W1.3 %>% dplyr::select(TTDDRUGID, entrez, GO, kegg_id) %>% distinct()
-
-# postprocessing
-DRD.W1.3 <- DRD.W1.3 %>% dplyr::rename(INDC.entrez = entrez, INDC.GO = GO, INDC.PATH = kegg_id)
-#DRD.W1.3$INDC.PATH[!is.na(DRD.W1.3$INDC.PATH)]  <- sapply(DRD.W1.3$INDC.PATH[!is.na(DRD.W1.3$INDC.PATH)], function(x) paste("KEGG.",x,collapse=""))
-library(parallel)
-DRD.W1.3$INDC.PATH[!is.na(DRD.W1.3$INDC.PATH)] <- 
-  unlist(
-    mclapply(
-      DRD.W1.3$INDC.PATH[!is.na(DRD.W1.3$INDC.PATH)],
-      function(x) paste("KEGG.",x,sep="",collapse=""),
-      mc.cores = 10)
-    )
-
-```
-
-
-
-# WAY2, SIDEEFFECTS
-
-## TARGET_CROSSMATCHING, parse SuperDrugATC, DrugName
-```{r}
-load("~/epilepsie_preprocessing_descrStat/data/TTD/TARGET_CROSSMATCHING.RData")
-TARGET_CROSSMATCHING <- TARGET_CROSSMATCHING %>%  filter(SuperDrugATC != "") %>% 
-  dplyr::select(TTDID, DrugName, SuperDrugATC) %>% distinct()
-sum(grepl(";",TARGET_CROSSMATCHING$DrugName))
-sum(grepl(";",TARGET_CROSSMATCHING$SuperDrugATC))
-n_distinct(TARGET_CROSSMATCHING$SuperDrugATC)
-glimpse(TARGET_CROSSMATCHING)
-
-# parse DrugName
-parseMe(TARGET_CROSSMATCHING$DrugName)
-TARGET_CROSSMATCHING <- parseColByIdx(TARGET_CROSSMATCHING,"DrugName",1,sep = ";")
-
-# parse SuperDrugATC
-parseMe(TARGET_CROSSMATCHING$SuperDrugATC)
-TARGET_CROSSMATCHING <- parseColByIdx(TARGET_CROSSMATCHING,"SuperDrugATC",1,sep = ";")
-
-```
-
-## DRUGIDS, preprocessing
-```{r}
-DRUGIDS <- tbl(src,"REFERENCE.DRUGIDS") %>% filter(SOURCE_NAME == "ATC") %>% dplyr::select(-SOURCE_NAME) %>% distinct() %>% collect() %>% 
-  dplyr::rename(SuperDrugATC = SOURCE_ID)
-
-parseMe(DRUGIDS$SuperDrugATC)
-
-```
-
-
-## DRUG2SIDEEFFECTS, parse and transform FREQUENCY
-```{r}
-DRUG2SIDEEFFECTS <- tbl(src,"REFERENCE.DRUG2SIDEEFFECTS") %>% collect()
-DRUG2SIDEEFFECTS <- DRUG2SIDEEFFECTS %>% dplyr::select(STITCHID_FLAT, STITCHID_STEREO, FREQUENCY, MEDDRA, -UMLS) %>% distinct()
-DRUG2SIDEEFFECTS <- as_tibble(apply(DRUG2SIDEEFFECTS,2,as.character))
 DRUG2SIDEEFFECTS$FREQUENCY <- gsub("%","",DRUG2SIDEEFFECTS$FREQUENCY)
 DRUG2SIDEEFFECTS$FREQUENCYn <- as.numeric(DRUG2SIDEEFFECTS$FREQUENCY)
 
 # drop useless rows
-x <- which(DRUG2SIDEEFFECTS$FREQUENCY == "postmarketing")
-DRUG2SIDEEFFECTS <- DRUG2SIDEEFFECTS[-x,]
+DRUG2SIDEEFFECTS <- DRUG2SIDEEFFECTS %>% filter(FREQUENCY != "postmarketing")
 
 # split source
 DRUG2S.numeric      <- DRUG2SIDEEFFECTS[!is.na(DRUG2SIDEEFFECTS$FREQUENCYn),]
@@ -558,487 +288,395 @@ DRUG2S.nonnumeric$FREQUENCY[DRUG2S.nonnumeric$FREQUENCY == "Jan 13"] <- subst.ja
 DRUG2S.nonnumeric$FREQUENCYn <- DRUG2S.nonnumeric$FREQUENCY
 
 # merge split
-DRUG2SIDEEFFECTS <- rbind(DRUG2S.nonnumeric %>% dplyr::select(-FREQUENCY), DRUG2S.numeric %>% dplyr::select(-FREQUENCY))
-DRUG2SIDEEFFECTS$FREQUENCYn <- as.numeric(DRUG2SIDEEFFECTS$FREQUENCYn)
+DRUG2SIDEEFFECTS2 <- rbind(DRUG2S.nonnumeric %>% dplyr::select(-FREQUENCY), DRUG2S.numeric %>% dplyr::select(-FREQUENCY))
+DRUG2SIDEEFFECTS2$FREQUENCYn <- as.numeric(DRUG2SIDEEFFECTS2$FREQUENCYn)
 
 # aggregate by mean frequency
-DRUG2SIDEEFFECTS <- aggregate(FREQUENCYn ~., data = DRUG2SIDEEFFECTS, FUN=mean, na.rm=TRUE)
+DRUG2SIDEEFFECTS2 <- aggregate(FREQUENCYn ~., data = DRUG2SIDEEFFECTS2, FUN=mean, na.rm=TRUE)
 
-# # transform FREQUENCYn to WHO classification
-# ############################################
-# 
-# #  # WHO frequency classification
-# # freq  <- c("very common", "common", "uncommon", "rare", "very rare")
-# # freq.p <- c(">= 10%", ">= 1% and <10%", ">= 0.1% and < 1%", ">= 0.01% and < 0.1%", "< 0.01%")
-# # WHO <- as.data.frame(cbind(freq,freq.p), stringsAsFactors = FALSE)
-# 
-# very_rare   <- DRUG2SIDEEFFECTS$FREQUENCYn < 0.01
-# rare        <- DRUG2SIDEEFFECTS$FREQUENCYn >= 0.01 & DRUG2SIDEEFFECTS$FREQUENCYn  < 0.1
-# uncommon    <- DRUG2SIDEEFFECTS$FREQUENCYn >= 0.1  & DRUG2SIDEEFFECTS$FREQUENCYn  < 1
-# common      <- DRUG2SIDEEFFECTS$FREQUENCYn >= 1    & DRUG2SIDEEFFECTS$FREQUENCYn  < 10
-# very_common <- DRUG2SIDEEFFECTS$FREQUENCYn >= 10
-# 
-# DRUG2SIDEEFFECTS$WHO <- NA
-# DRUG2SIDEEFFECTS$WHO[very_rare]   <- "very_rare"
-# DRUG2SIDEEFFECTS$WHO[rare]        <- "rare"
-# DRUG2SIDEEFFECTS$WHO[uncommon]    <- "uncommon"
-# DRUG2SIDEEFFECTS$WHO[common]      <- "common"
-# DRUG2SIDEEFFECTS$WHO[very_common] <- "very_common"
-# 
-# # standardise strings
-DRUG2SIDEEFFECTS$MEDDRA <- trimws(toupper(DRUG2SIDEEFFECTS$MEDDRA))
-# DRUG2SIDEEFFECTS$WHO    <- trimws(toupper(DRUG2SIDEEFFECTS$WHO))
-# DRUG2SIDEEFFECTS        <- as_tibble(DRUG2SIDEEFFECTS)
-# head(DRUG2SIDEEFFECTS)
-# 
-# # tidy up
-# rm(DRUG2S.numeric, DRUG2S.nonnumeric, very_rare, rare, uncommon, common, very_common)
-# rm(list=ls(pattern="subst\\."))
-# rm(x, subst)
+# transform to WHO frequency
+very_rare   <- DRUG2SIDEEFFECTS2$FREQUENCYn < 0.01
+rare        <- DRUG2SIDEEFFECTS2$FREQUENCYn >= 0.01 & DRUG2SIDEEFFECTS2$FREQUENCYn  < 0.1
+uncommon    <- DRUG2SIDEEFFECTS2$FREQUENCYn >= 0.1  & DRUG2SIDEEFFECTS2$FREQUENCYn  < 1
+common      <- DRUG2SIDEEFFECTS2$FREQUENCYn >= 1    & DRUG2SIDEEFFECTS2$FREQUENCYn  < 10
+very_common <- DRUG2SIDEEFFECTS2$FREQUENCYn >= 10
+
+DRUG2SIDEEFFECTS2$WHO <- NA
+DRUG2SIDEEFFECTS2$WHO[very_rare]   <- "very_rare"
+DRUG2SIDEEFFECTS2$WHO[rare]        <- "rare"
+DRUG2SIDEEFFECTS2$WHO[uncommon]    <- "uncommon"
+DRUG2SIDEEFFECTS2$WHO[common]      <- "common"
+DRUG2SIDEEFFECTS2$WHO[very_common] <- "very_common"
+
+DRUG2SIDEEFFECTS2 <- DRUG2SIDEEFFECTS2 %>% dplyr::select(-FREQUENCYn) %>% as_tibble()
 ```
 
-## multi-join DRD <-> TARGET_CROSSMATCHING <-> DRUGIDS <-> DRUG2SIDEEFFECTS --> DRD
+## DRUGIDS -> DRUGIDS2
 ```{r}
+DRUGIDS <- 
+  tbl(src,"REFERENCE.DRUGIDS") %>% 
+  filter(SOURCE_NAME == "ATC") %>% 
+ dplyr::select(FLAT_CHEMICAL, STEREO_CHEMICAL, SOURCE_ID) %>% 
+  distinct() %>% collect() %>% 
+  dplyr::rename(ATC = SOURCE_ID) 
 
-# DRD <-> TARGET_CROSSMATCHING
-DRD.W2.1 <- DRD.W0.2 %>% dplyr::select(TTDDRUGID, DRUGNAME) %>% distinct()
-DRD.W2.2 <- left_join(DRD.W2.1, TARGET_CROSSMATCHING, by=c("TTDDRUGID"="TTDID"))
+DRUGIDS <- sapply(DRUGIDS, function(x) as.character(x)) %>% as_tibble()
 
-DRD.W2.1$DRUGNAME             <- trimws(toupper(DRD.W2.1$DRUGNAME))
-TARGET_CROSSMATCHING$DrugName <- trimws(toupper(TARGET_CROSSMATCHING$DrugName))
-DRD.W2.3                      <- left_join(DRD.W2.1, TARGET_CROSSMATCHING, by=c("DRUGNAME"="DrugName"))
-glimpse(DRD.W2.2)
-glimpse(DRD.W2.3)
-
-DRD.W2.4 <- 
-  unique(
-    rbind(
-      DRD.W2.2 %>% dplyr::select(TTDDRUGID, DRUGNAME, SuperDrugATC) %>% distinct(),
-      DRD.W2.3 %>% dplyr::select(TTDDRUGID, DRUGNAME, SuperDrugATC) %>% distinct()
-      ))
-
-DRD.W2.4 <- DRD.W2.4 %>% filter(!is.na(SuperDrugATC))
-
-# <-> DRUGIDs
-DRD.W2.4$SuperDrugATC <- trimws(toupper(DRD.W2.4$SuperDrugATC))
-DRUGIDS$SuperDrugATC  <- trimws(toupper(DRUGIDS$SuperDrugATC))
-DRD.W2.5              <- left_join(DRD.W2.4, DRUGIDS)
-
-# <-> DRUG2SIDEEFFECTS
-DRD.W2.5$FLAT_CHEMICAL   <- trimws(toupper(DRD.W2.5$FLAT_CHEMICAL))
-DRD.W2.5$STEREO_CHEMICAL <- trimws(toupper(DRD.W2.5$STEREO_CHEMICAL))
-DRUG2SIDEEFFECTS$STITCHID_FLAT <- trimws(toupper(DRUG2SIDEEFFECTS$STITCHID_FLAT))
-DRUG2SIDEEFFECTS$STITCHID_STEREO <- trimws(toupper(DRUG2SIDEEFFECTS$STITCHID_STEREO))
-DRD.W2.6.1 <- left_join(DRD.W2.5, DRUG2SIDEEFFECTS %>% dplyr::select(-STITCHID_STEREO), by=c("FLAT_CHEMICAL"="STITCHID_FLAT"))
-DRD.W2.6.2 <- left_join(DRD.W2.5, DRUG2SIDEEFFECTS %>% dplyr::select(-STITCHID_FLAT), by=c("STEREO_CHEMICAL"="STITCHID_STEREO"))
-
-# combine
-DRD.W2.6   <-
-  unique(rbind(DRD.W2.6.1, DRD.W2.6.2)) %>% dplyr::select(-FLAT_CHEMICAL,
-  -STEREO_CHEMICAL,
-  -DRUGNAME,
-  -SuperDrugATC
-  ) %>%  distinct()
-
-x         <- which(is.na(DRD.W2.6$MEDDRA) & is.na(DRD.W2.6$FREQUENCYn) )
-DRD.W2.6  <- DRD.W2.6[-x,] %>% distinct()
-
-# transform FREQUENCYn to WHO classification
-############################################
-
-#  # WHO frequency classification
-# freq  <- c("very common", "common", "uncommon", "rare", "very rare")
-# freq.p <- c(">= 10%", ">= 1% and <10%", ">= 0.1% and < 1%", ">= 0.01% and < 0.1%", "< 0.01%")
-# WHO <- as.data.frame(cbind(freq,freq.p), stringsAsFactors = FALSE)
-
-# aggregate
-DRD.W2.6 <- as_tibble(aggregate(FREQUENCYn ~., data = DRD.W2.6, FUN = mean))
-
-# transform
-very_rare   <- DRD.W2.6$FREQUENCYn < 0.01
-rare        <- DRD.W2.6$FREQUENCYn >= 0.01 & DRD.W2.6$FREQUENCYn  < 0.1
-uncommon    <- DRD.W2.6$FREQUENCYn >= 0.1  & DRD.W2.6$FREQUENCYn  < 1
-common      <- DRD.W2.6$FREQUENCYn >= 1    & DRD.W2.6$FREQUENCYn  < 10
-very_common <- DRD.W2.6$FREQUENCYn >= 10
-
-DRD.W2.6$WHO <- NA
-DRD.W2.6$WHO[very_rare]   <- 0 # "very_rare"
-DRD.W2.6$WHO[rare]        <- 1 # "rare"
-DRD.W2.6$WHO[uncommon]    <- 2 # "uncommon"
-DRD.W2.6$WHO[common]      <- 3 # "common"
-DRD.W2.6$WHO[very_common] <- 4 # "very_common"
-
-# postprocessing
-################
-DRD.W2.6 <- DRD.W2.6 %>% dplyr::select(-FREQUENCYn) %>% distinct()
-
-```
-
-
-# WAY 3
-
-## expand drug namespace
-```{r}
-
-DRD.W3.1 <-
+DRUGIDS2 <- 
   rbind(
-    DRD.W0.2 %>% dplyr::select(TTDDRUGID, SUBSTANCENAME) %>% distinct() %>% dplyr::rename(NAME = SUBSTANCENAME),
-    DRD.W0.2 %>% dplyr::select(TTDDRUGID, DRUGNAME) %>% distinct() %>% dplyr::rename(NAME = DRUGNAME)
-  ) %>% distinct()
-
-DRD.W3.1.x <- left_join(DRD.W3.1, DRUGSYNONYMSDRUGBANK, by = c("NAME"="Common.name"))
-DRD.W3.1  <- 
-  rbind(
-    DRD.W3.1.x %>% dplyr::select(-Synonyms),
-    DRD.W3.1.x %>% dplyr::select(-NAME) %>% dplyr::rename(NAME = Synonyms)
-  ) %>% distinct()
-
-# add Uniprot.ID via DRUGTARGETSDRUGBANK
-DRUGTARGETSDRUGBANK <- read.csv("~/epilepsie_preprocessing_descrStat/data/DrugBank/DrugTargetsDrugBank.csv", stringsAsFactors=FALSE)
-head(DRUGTARGETSDRUGBANK)
-DRUGTARGETSDRUGBANK <- DRUGTARGETSDRUGBANK %>% dplyr::select(DrugBank.ID, UniProt.ID) %>% distinct()
-
-DRD.W3.1e <- left_join(DRD.W3.1, DRUGTARGETSDRUGBANK) %>% dplyr::select(-DrugBank.ID) %>% distinct()
+    DRUGIDS[,c(1,3)] %>% dplyr::rename(CHEMICAL  = FLAT_CHEMICAL ),
+    DRUGIDS[,c(2,3)] %>% dplyr::rename(CHEMICAL  = STEREO_CHEMICAL)) %>% 
+  distinct()
 ```
 
-## TARGET ONTOLOGY
+## DRUGIDS2 + DRUG2SIDEEFFECTS2 = DRUG2SIDEEFFECTS3
 ```{r}
-
-# TARGET ONTOLOGY, load and preprocess
-load("~/epilepsie_preprocessing_descrStat/data/TTD/TARGET_ONTOLOGY.RData")
-TARGET_ONTOLOGY <- TARGET_ONTOLOGY[,-10]
-TARGET_ONTOLOGY <- as_tibble(TARGET_ONTOLOGY)
-glimpse(TARGET_ONTOLOGY)
-TARGET_ONTOLOGY <- TARGET_ONTOLOGY %>% filter(Drugs != "", !is.na(Drugs)) %>%  dplyr::select(TTDID, Drugs, UniProtID, Pathway) %>% distinct()
-TARGET_ONTOLOGY <- as_tibble(apply(TARGET_ONTOLOGY,2,function(x) trimws(toupper(x))))
-TARGET_ONTOLOGY            <- parseColByIdx(TARGET_ONTOLOGY,"Drugs",1)
-TARGET_ONTOLOGY            <- parseColByIdx(TARGET_ONTOLOGY,"UniProtID",1)
-TARGET_ONTOLOGY            <- parseColByIdx(TARGET_ONTOLOGY,"Pathway",1)
-
-# transform pathway to 
-# pathways, load and preprocess
-TARGET2KEGGPATHWAYS <- tbl(src,"REFERENCE.TARGET2KEGGPATHWAYS") %>% filter(TTDID != "") %>%  collect()
-TARGET2KEGGPATHWAYS <- TARGET2KEGGPATHWAYS %>% dplyr::rename(PATH_ID = KEGG_PATHWAYID, PATH_NAME = KEGG_PATHWAY_NAME)
-human               <- grepl("hsa",TARGET2KEGGPATHWAYS$PATH_ID)
-TARGET2KEGGPATHWAYS <- TARGET2KEGGPATHWAYS[human,]
-
-TARGET2WIKIPATHWAYS <- tbl(src,"REFERENCE.TARGET2WIKIPATHWAYS") %>%   collect()
-TARGET2WIKIPATHWAYS <- TARGET2WIKIPATHWAYS %>% dplyr::rename(PATH_ID = WIKI_PATHWAY_ID, PATH_NAME =  WIKI_PATHWAY_NAME)
-PATHWAYS            <- rbind(TARGET2KEGGPATHWAYS,TARGET2WIKIPATHWAYS) %>% distinct()
-PATHWAYS$PATH_NAME  <- trimws(toupper(PATHWAYS$PATH_NAME))
-
-# match TARGET_ONTOLOGY$Pathway to PATHWAYS$PATH_NAME and retrieve PATHWAYS$PATH_ID
-TARGET_ONTOLOGY.P1 <- 
+DRUG2SIDEEFFECTS3 <-
   inner_join(
-    TARGET_ONTOLOGY, 
-    PATHWAYS %>% dplyr::select(-PATH_NAME), 
-    by = "TTDID") %>% 
-  dplyr::select(-Pathway) %>% 
+    DRUGIDS2,
+    DRUG2SIDEEFFECTS2,
+    by = c("CHEMICAL" = "STITCHID")
+  ) %>% 
+  dplyr::select(-CHEMICAL) %>% 
+  distinct()
+```
+
+## TTD_CROSSMATCHING + DRD2 -> ... -> drug2sideeffects2
+```{r}
+load("~/epilepsie_preprocessing_descrStat/data/TTD/TARGET_CROSSMATCHING.RData")
+TARGET_CROSSMATCHING <-
+  as_tibble(TARGET_CROSSMATCHING) %>% 
+  dplyr::select(DrugName, TTDID, SuperDrugATC) %>%
   distinct()
 
-TARGET_ONTOLOGY.P2 <- 
-  inner_join(
-    TARGET_ONTOLOGY, 
-    PATHWAYS %>% dplyr::select(-TTDID), 
-    by = c("Pathway"="PATH_NAME")) %>%
-  dplyr::select(-Pathway) %>% 
-  distinct()
+TARGET_CROSSMATCHING <- parseColByIdx(TARGET_CROSSMATCHING,"SuperDrugATC",";") %>% as_tibble()
+TARGET_CROSSMATCHING <- parseColByIdx(TARGET_CROSSMATCHING,"DrugName",";") %>% as_tibble()
+TARGET_CROSSMATCHING <- NormalizeStrings(TARGET_CROSSMATCHING)
+TARGET_CROSSMATCHING <- TARGET_CROSSMATCHING[complete.cases(TARGET_CROSSMATCHING),]
 
-TARGET_ONTOLOGY <- rbind(TARGET_ONTOLOGY.P1, TARGET_ONTOLOGY.P2) %>% distinct() %>% dplyr::rename(PATH = PATH_ID)
-```
+drug2sideeffects1 <- 
+  left_join(
+    DRD2,
+    TARGET_CROSSMATCHING %>% dplyr::select(-DrugName) %>% distinct(),
+    by = c("TTDDRUGID"="TTDID")
+    )
 
-## DRD.W3.1 (enlarged namespace) + TARGET_ONTOLOGY -> DRD.W3.1.x 
-```{r}
-
-DRD.W3.1 <- left_join(DRD.W3.1e, TARGET_ONTOLOGY, by = c("NAME"="Drugs")) %>% dplyr::select(-NAME) %>% distinct()
-DRD.W3.1 <- rbind(
-  DRD.W3.1 %>% dplyr::select(-UniProt.ID) %>% distinct(),
-  DRD.W3.1 %>% dplyr::select(-UniProtID) %>% dplyr::rename(UniProtID = UniProt.ID) %>% distinct()) %>% 
-  distinct()
-
-# add TTDID Pathways
-####################
-DRD.W3.2 <- left_join(DRD.W3.1, PATHWAYS %>% dplyr::select(-PATH_NAME) %>% distinct()) %>% 
-  dplyr::select(-TTDID) %>% distinct()
-
-DRD.W3.3 <- rbind(
-  DRD.W3.2 %>% dplyr::select(-PATH_ID) %>% distinct(),
-  DRD.W3.2 %>% dplyr::select(-PATH) %>% distinct() %>% dplyr::rename(PATH = PATH_ID)
-) %>% distinct()
-
-# postprocessing
-################
-x        <- which(is.na(DRD.W3.3$UniProtID) & is.na(DRD.W3.3$PATH))
-DRD.W3.3 <- DRD.W3.3[-x,]
-```
-
-
-# module UNIPROT
-
-```{r}
-columns(org.Hs.eg.db)
-u <- unique(DRD.W3.3$UniProtID)
-
-# UNIPROT to GO
-UNIPROT2GO       <- as_tibble(AnnotationDbi::select(org.Hs.eg.db, keys = u, keytype="UNIPROT" ,columns=c("UNIPROT","GO")))
-UNIPROT2GO       <- UNIPROT2GO %>% dplyr::select(-EVIDENCE) %>% distinct()
-UNIPROT2GO$GO    <- gsub("GO:","",UNIPROT2GO$GO)
-UNIPROT2GO       <- UNIPROT2GO[!is.na(UNIPROT2GO$GO),]
-UNIPROT2GO$GO    <- paste(UNIPROT2GO$ONTOLOGY,".",UNIPROT2GO$GO,sep="")
-UNIPROT2GO       <- UNIPROT2GO %>% dplyr::select(-ONTOLOGY) %>% distinct()
-
-# UNIPROT to KEGG PATHWAYS
-UNIPROT2KEGG <- as_tibble(AnnotationDbi::select(org.Hs.eg.db, keys = u, keytype="UNIPROT" ,columns=c("UNIPROT","PATH")))
-UNIPROT2KEGG <- UNIPROT2KEGG[complete.cases(UNIPROT2KEGG),] %>% distinct()
-UNIPROT2KEGG$PATH <- sapply(X = UNIPROT2KEGG$PATH, FUN = function(x) paste("hsa",x,sep=""))
-
-# UNIPROT to ENTREZ
-UNIPROT2ENTREZ <- as_tibble(AnnotationDbi::select(org.Hs.eg.db, keys = u, keytype="UNIPROT" ,columns=c("UNIPROT","SYMBOL")))
-UNIPROT2ENTREZ <- UNIPROT2ENTREZ[complete.cases(UNIPROT2ENTREZ),] %>% distinct() %>% dplyr::rename(GENESYMBOL = SYMBOL)
-```
-
- 
-```{r}
-# join GO, KEGGPATH, ENTREZ by UNIPROT to DRD.W3.3
-##################################################
-
-# go
-DRD.W3.4   <- left_join(DRD.W3.3, UNIPROT2GO, by = c("UniProtID" = "UNIPROT")) %>% distinct()
-
-# kegg
-DRD.W3.4.x <- DRD.W3.4 %>% dplyr::select(-PATH) %>% distinct()
-DRD.W3.4.x <- left_join(DRD.W3.4.x, UNIPROT2KEGG, by = c("UniProtID" = "UNIPROT"))
-DRD.W3.4   <- rbind(DRD.W3.4, DRD.W3.4.x) %>% distinct()
-
-# entrez
-DRD.W3.4 <- left_join(DRD.W3.4, UNIPROT2ENTREZ, by = c("UniProtID" = "UNIPROT"))
-
-
-```
-
-# WAY 4
-
-## TARGET2UNIPROT, parse UNIPROT_ID
-```{r}
-TARGET2UNIPROT <- tbl(src,"REFERENCE.TARGET2UNIPROT") %>% dplyr::select(TTD_TARGET_ID, UNIPROT_ID) %>% 
-  filter(UNIPROT_ID != "", !is.na(UNIPROT_ID)) %>% distinct() %>% collect()
-TARGET2UNIPROT$UNIPROT_ID <- gsub("[\\(].+[\\)]","",TARGET2UNIPROT$UNIPROT_ID)
-TARGET2UNIPROT            <- parseColByIdx(TARGET2UNIPROT,"UNIPROT_ID",1)
-
-```
-
-## TARGET2DISEASES, parse ICD9
-```{r}
-TARGET2DISEASES <- tbl(src,"REFERENCE.TARGET2DISEASES") %>% dplyr::select(TTDTARGETID, ICD9) %>% distinct() %>% collect()
-TARGET2DISEASES$ICD9[TARGET2DISEASES$ICD9 == "."] <- NA
-del <- c("585.9585.1-585.5403","280-285, 585.9585.1-585.5403")
-TARGET2DISEASES <- TARGET2DISEASES %>% filter(ICD9 != "", !is.na(ICD9), !(ICD9 %in% del))
-u <- unique(as.character(TARGET2DISEASES$ICD9))
-parsed <- as.data.frame(parseICD9(u))
-head(parsed)
-colnames(parsed) <- c("ICD9","ICD9.parsed")
-TARGET2DISEASES <- left_join(TARGET2DISEASES, parsed) %>% dplyr::select(-ICD9) %>% dplyr::rename(ICD9 = ICD9.parsed) %>% distinct()
-TARGET2DISEASES$ICD9 <- trimws(TARGET2DISEASES$ICD9)
-```
-
-## DRD <-> TARGET2UNIPROT <-> TARGET2DISEASES -> DRD
-```{r}
-
-DRD.W4.1 <- left_join(DRD.W3.4,TARGET2UNIPROT,by=c("UniProtID"="UNIPROT_ID")) %>% dplyr::rename(TTDTARGETID = TTD_TARGET_ID)
-DRD.W4.2 <- left_join(DRD.W4.1,TARGET2DISEASES)
-DRD.W4.2 <- DRD.W4.2 %>% dplyr::select(-UniProtID, -TTDTARGETID) %>% distinct()
-
-```
-
-## add PHEWAS_STRING to DRD.W4.2
-```{r}
-DRD.W4.3 <- left_join(DRD.W4.2, ICD9GROUPING %>% dplyr::select(ICD9, PHEWAS_CODE) %>% distinct())
-DRD.W4.3 <-
-  DRD.W4.3 %>% dplyr::rename(
-  INDC.ICD9 = ICD9,
-  INDC.PHEWAS = PHEWAS_CODE,
-  TARGET.PATH = PATH,
-  TARGET.GO = GO,
-  TARGET.GENE = GENESYMBOL
+drug2sideeffects2 <-
+  left_join(
+    drug2sideeffects1,
+    TARGET_CROSSMATCHING %>% dplyr::select(-TTDID) %>% distinct(),
+    by = c("names" = "DrugName")
   )
+
+drug2sideeffects2 <-
+  rbind(
+    drug2sideeffects2 %>% dplyr::select(-SuperDrugATC.y) %>% dplyr::rename(ATC = SuperDrugATC.x),
+    drug2sideeffects2 %>% dplyr::select(-SuperDrugATC.x) %>% dplyr::rename(ATC = SuperDrugATC.y)
+  ) %>% distinct()
 ```
 
-# Interface I1
-
-## DRD.W1.3 + DRD.W2.6 -> DRD.W2.7 
+## drug2sideeffects2 + DRUG2SIDEEFFECTS3 -> drug2sideeffects
 ```{r}
+drug2sideeffects <- inner_join(drug2sideeffects2, DRUG2SIDEEFFECTS3, by="ATC") %>% dplyr::select(-names, -ATC) %>% distinct()
+drug2sideeffects <- NormalizeStrings(drug2sideeffects)
 
-# DRD.W1.3 + DRD.W2.6 -> DRD.W2.7
-#################################
-
-# spread DRD.W1.3
-DRD.W1.3.GO   <- as_tibble(cbind(DRD.W1.3 %>% dplyr::select(TTDDRUGID, INDC.GO) %>% distinct(), val = TRUE)) 
-DRD.W1.3.PATH <- as_tibble(cbind(DRD.W1.3 %>% dplyr::select(TTDDRUGID, INDC.PATH) %>% distinct(), val = TRUE)) 
-
-DRD.W1.3.GO   <- spread(DRD.W1.3.GO, key = INDC.GO, value = val, fill = FALSE, sep = "_x_")
-DRD.W1.3.PATH <- spread(DRD.W1.3.PATH, key = INDC.PATH, value = val, fill = FALSE, sep = "_x_")
-
-DRD.W1.3.spread <- cbind(DRD.W1.3.PATH, DRD.W1.3.GO[,-1])
-rm(DRD.W1.3.GO, DRD.W1.3.PATH )
-
-# spread DRD.W2.6
-DRD.W2.6.spread <- spread(DRD.W2.6, key = MEDDRA, value = WHO, fill = FALSE, sep = "_x_")
-
-# -> DRD.W2.7
-DRD.W2.7 <- as_tibble(unique(c(DRD.W1.3.spread$TTDDRUGID, DRD.W2.6.spread$TTDDRUGID)))
-colnames(DRD.W2.7) <-  "TTDDRUGID"
-DRD.W2.7 <- left_join(DRD.W2.7, DRD.W1.3.spread, by = "TTDDRUGID")
-DRD.W2.7 <- left_join(DRD.W2.7, DRD.W2.6.spread, by = "TTDDRUGID")
-
+parseMe(drug2sideeffects$MEDDRA)
+parseMe(drug2sideeffects$WHO)
+sum(is.na(parseMe(drug2sideeffects$MEDDRA)))
 ```
 
-## transform DRD.W.4.3 
+# DRUG -> UNIPROT
 
-In addition add "DRUG Indication PHEWAS Codes"" from DRD.W0.2 to
-the "Target Indication PHEWAS Codes" from DRD.W4.3
+## preprocessing DrugSynonymsDrugBank
+## aggregate drugnames
+## DRUGSYNONYMSDRUGBANK + DRD2 -> ... -> drug2uniprot1.3
 ```{r}
+DrugSynonymsDrugBank <- read.csv("~/epilepsie_preprocessing_descrStat/data/DrugBank/DrugSynonymsDrugBank.csv")
+DrugSynonymsDrugBank <- tibble::as_tibble(DrugSynonymsDrugBank)
+DrugSynonymsDrugBank <- DrugSynonymsDrugBank %>%dplyr::select(DrugBank.ID, Common.name, Synonyms) %>% distinct()
+DrugSynonymsDrugBank <- NormalizeStrings(DrugSynonymsDrugBank)
+parseMe((DrugSynonymsDrugBank$Common.name))
+parseMe((DrugSynonymsDrugBank$Synonyms))
+DrugSynonymsDrugBank <- parseColByIdx(DrugSynonymsDrugBank, "Common.name")
+DrugSynonymsDrugBank <- parseColByIdx(DrugSynonymsDrugBank, "Synonyms")
+DrugSynonymsDrugBank <- parseColByIdx(DrugSynonymsDrugBank, "Synonyms", sep="\\|")
 
-# spread DRD.W4.3 piecewise
-###########################
-
-# path
-DRD.W4.3.PATH   <- DRD.W4.3 %>% dplyr::select(TTDDRUGID, TARGET.PATH) %>% distinct()
-DRD.W4.3.PATH   <- DRD.W4.3.PATH[!is.na(DRD.W4.3.PATH$TARGET.PATH),]
-DRD.W4.3.PATH   <- cbind(DRD.W4.3.PATH, val = TRUE)
-DRD.W4.3.PATH   <- spread(DRD.W4.3.PATH, TARGET.PATH, val, sep = "_x_", fill = FALSE)
-
-# go
-DRD.W4.3.GO   <- DRD.W4.3 %>% dplyr::select(TTDDRUGID, TARGET.GO) %>% distinct()
-DRD.W4.3.GO   <- DRD.W4.3.GO[!is.na(DRD.W4.3.GO$TARGET.GO),]
-DRD.W4.3.GO   <- cbind(DRD.W4.3.GO, val = TRUE)
-DRD.W4.3.GO   <- spread(DRD.W4.3.GO, TARGET.GO, val, sep = "_x_", fill = FALSE)
-
-# genes
-DRD.W4.3.GENE <- DRD.W4.3 %>% dplyr::select(TTDDRUGID, TARGET.GENE ) %>% distinct()
-DRD.W4.3.GENE$TARGET.GENE  <- as.character(DRD.W4.3.GENE$TARGET.GENE  )
-DRD.W4.3.GENE   <- cbind(DRD.W4.3.GENE, val = TRUE)
-DRD.W4.3.GENE   <- spread(DRD.W4.3.GENE, TARGET.GENE, val, sep = "_x_", fill = FALSE)
-# phewas
-########
-
-# phewas
-DRD.W4.3.PHEWAS <- DRD.W4.3 %>% dplyr::select(TTDDRUGID, INDC.PHEWAS) %>% distinct()
-DRD.W4.3.PHEWAS$INDC.PHEWAS <- as.character(DRD.W4.3.PHEWAS$INDC.PHEWAS )
-
-# # phewas from DRD.W0.2
-DRD.W0.2.PHEWAS <-
-  DRD.W0.2 %>%  dplyr::select(TTDDRUGID, PHEWAS_CODE) %>% 
-  dplyr::rename(INDC.PHEWAS = PHEWAS_CODE) %>% 
-  filter(!is.na(INDC.PHEWAS)) %>%  distinct() 
-
-DRD.W0.2.PHEWAS$INDC.PHEWAS <- as.character(DRD.W0.2.PHEWAS$INDC.PHEWAS)
-DRD.W4.3.PHEWAS             <- rbind(DRD.W4.3.PHEWAS, DRD.W0.2.PHEWAS) %>% distinct()
-
-# #
-DRD.W4.3.PHEWAS <- DRD.W4.3.PHEWAS[!is.na(DRD.W4.3.PHEWAS$INDC.PHEWAS),]
-DRD.W4.3.PHEWAS <- cbind(DRD.W4.3.PHEWAS, val = TRUE)
-DRD.W4.3.PHEWAS$INDC.PHEWAS <- floor(10*as.numeric(DRD.W4.3.PHEWAS$INDC.PHEWAS)) / 10 
-DRD.W4.3.PHEWAS <- DRD.W4.3.PHEWAS %>% distinct()
-# # round to highlevel phewas
-
-DRD.W4.3.PHEWAS <- spread(DRD.W4.3.PHEWAS, INDC.PHEWAS, val, sep = "_x_", fill = FALSE)
-
-# # only for heatmap, comment after usage !
-# DRD.W4.3.PATH   <- DRD.W4.3 %>% dplyr::select(TTDDRUGID, TARGET.PATH) %>% distinct()
-# DRD.W4.3.PATH   <- DRD.W4.3.PATH[!is.na(DRD.W4.3.PATH$TARGET.PATH),]
-# DRD.W4.3.PATH   <- cbind(DRD.W4.3.PATH, val = 1)
-# DRD.W4.3.PATH   <- spread(DRD.W4.3.PATH, TARGET.PATH, val, sep = "_x_", fill = 0)
-# heatmap.2(apply(DRD.W4.3.PATH[,-1],2,as.numeric), dendrogram = 'row',trace = 'none', xlab = "PATH")
-# 
-# DRD.W4.3.PHEWAS <- DRD.W4.3 %>% dplyr::select(TTDDRUGID, INDC.PHEWAS) %>% distinct()
-# DRD.W4.3.PHEWAS <- DRD.W4.3.PHEWAS[!is.na(DRD.W4.3.PHEWAS$INDC.PHEWAS),]
-# DRD.W4.3.PHEWAS <- cbind(DRD.W4.3.PHEWAS, val = 1)
-# DRD.W4.3.PHEWAS <- spread(DRD.W4.3.PHEWAS, INDC.PHEWAS, val, sep = "_x_", fill = 0)
-# heatmap.2(apply(DRD.W4.3.PHEWAS[,-1],2,as.numeric), dendrogram = 'row',trace = 'none', xlab = "PATH")
-
-# join spreaded tables
-DRD.W4.4 <- as_tibble(unique(c(DRD.W4.3.PATH$TTDDRUGID, DRD.W4.3.PHEWAS$TTDDRUGID)))
-colnames(DRD.W4.4) <- "TTDDRUGID"
-DRD.W4.4 <- left_join(DRD.W4.4, DRD.W4.3.PATH, by = "TTDDRUGID")
-DRD.W4.4 <- left_join(DRD.W4.4, DRD.W4.3.PHEWAS, by = "TTDDRUGID")
-DRD.W4.4 <- left_join(DRD.W4.4, DRD.W4.3.GO, by = "TTDDRUGID")
-DRD.W4.4 <- left_join(DRD.W4.4, DRD.W4.3.GENE, by = "TTDDRUGID")
-rm(DRD.W4.3.PATH, DRD.W4.3.PHEWAS, DRD.W0.2.PHEWAS, DRD.W4.3.GO, DRD.W4.3.GENE)
-```
-
-# WAY 5
-
-## combine DRD.W4.4 + DRD.W2.7 to DRD.W5.2
-```{r}
-
-DRD.W5.2 <- as_tibble(unique(c(DRD.W4.4$TTDDRUGID, DRD.W2.7$TTDDRUGID)))
-colnames(DRD.W5.2) <- "TTDDRUGID"
-DRD.W5.2 <- left_join(DRD.W5.2, DRD.W4.4, by = "TTDDRUGID")
-DRD.W5.2 <- left_join(DRD.W5.2, DRD.W2.7, by = "TTDDRUGID")
-```
-
-# WAY 6
-
-## combine DRD.W5.2 + DRD.W0.2
-
-Join PATIENTS-table with the remaining drug-descriptor features, with exception
-to DRD.W0.2$PHEWAS_CODE, because that's already been done in DRD.W4.4
-
-```{r}
-
-# preprocessing DRD.W0.2
-########################
-DRD.W0.2.x <- DRD.W0.2 %>% dplyr::select(-ICD9, -PHEWAS_CODE, -DRUGNAME) %>% distinct()
-
-# drop redundant rows with empty PHARMCLS1
-x1 <- 
-  DRD.W0.2.x %>% 
-  filter(PHARMCLS1 == "") %>% 
-  dplyr::select(SUBSTANCENAME) %>% 
+DrugSynonymsDrugBank2 <- 
+  DrugSynonymsDrugBank %>% 
+  gather(colnames,  names, -DrugBank.ID) %>% 
+  dplyr::select(-colnames) %>% 
   distinct()
 
-x2 <- 
-  DRD.W0.2.x %>% 
-  filter(SUBSTANCENAME %in% x1$SUBSTANCENAME) %>% 
-  group_by(SUBSTANCENAME) %>% 
-  dplyr::select(PHARMCLS1) %>% 
-  tally() %>% 
-  filter(n>1)
+drug2uniprot1.1 <- left_join(DRD2, DrugSynonymsDrugBank2, by="names")
+```
 
-x3 <- 
-  DRD.W0.2.x %>% 
-  filter(SUBSTANCENAME %in% x2$SUBSTANCENAME) %>% 
-  dplyr::select(SUBSTANCENAME, TTDDRUGID) %>% 
-  distinct() %>% 
-  group_by(SUBSTANCENAME) %>% 
-  tally() %>% 
-  filter(n==1)
+## preprocessing DRUGTARGETSDRUGBANK
+## drug2uniprot1.1 + DRUGTARGETSDRUGBANK -> ... -> drug2uniprot1.3
+```{r}
+DrugTargetsDrugBank <- read.csv("~/epilepsie_preprocessing_descrStat/data/DrugBank/DrugTargetsDrugBank.csv")
+DrugTargetsDrugBank <- DrugTargetsDrugBank %>% dplyr::select(DrugBank.ID, Name, UniProt.ID) %>% distinct() %>% as_tibble()
+DrugTargetsDrugBank <- NormalizeStrings(DrugTargetsDrugBank)
+drug2uniprot1.2 <-  left_join(drug2uniprot1.1, DrugTargetsDrugBank, by = "DrugBank.ID")
+drug2uniprot1.3 <-  left_join(drug2uniprot1.2, DrugTargetsDrugBank, by = c("names"="Name"))
+drug2uniprot1.3 <- 
+  rbind(
+    drug2uniprot1.3 %>% dplyr::select(TTDDRUGID, UniProt.ID.x) %>% dplyr::rename(UNIPROT.ID = UniProt.ID.x),
+    drug2uniprot1.3 %>% dplyr::select(TTDDRUGID, UniProt.ID.y) %>% dplyr::rename(UNIPROT.ID = UniProt.ID.y)
+  ) %>% distinct()
+drug2uniprot1.3 <- drug2uniprot1.3[complete.cases(drug2uniprot1.3),]
+```
 
-DRD.W0.2.x <-
-  DRD.W0.2.x %>% 
-  filter(!(SUBSTANCENAME %in% x3$SUBSTANCENAME & PHARMCLS1 == ""))
+## preprocess TARGET_ONTOLOGY
+## TARGET_ONTOLOGY + DRD2 -> ... -> drug2uniprot2.1
+```{r}
+load("~/epilepsie_preprocessing_descrStat/data/TTD/TARGET_ONTOLOGY.RData") 
+TARGET_ONTOLOGY <- as_tibble(TARGET_ONTOLOGY[,-10])
+TARGET_ONTOLOGY <- TARGET_ONTOLOGY %>% dplyr::select(Drugs, UniProtID) %>% distinct()
+TARGET_ONTOLOGY <- NormalizeStrings(TARGET_ONTOLOGY)
+parseMe(TARGET_ONTOLOGY$UniProtID)
+parseMe(TARGET_ONTOLOGY$Drugs)
+TARGET_ONTOLOGY <- parseColByIdx(TARGET_ONTOLOGY, "UniProtID")
+TARGET_ONTOLOGY <- parseColByIdx(TARGET_ONTOLOGY, "Drugs")
 
-# replace emtpy PHARMCLS1 with NA
-DRD.W0.2.x$PHARMCLS1[DRD.W0.2.x$PHARMCLS1 == ""] <- NA
+# join tables
+drug2uniprot2.1 <- inner_join(DRD2, TARGET_ONTOLOGY, by = c("names" = "Drugs")) %>% dplyr::select(-names) %>% distinct()
+```
 
+## final TTDDRUGID to UNIPROT merge
+## drug2uniprot1.3 + drug2uniprot2.1 -> drug2uniprot
+```{r}
+drug2uniprot <- rbind(drug2uniprot1.3, setNames(drug2uniprot2.1, names(drug2uniprot1.3))) %>% distinct()
+```
 
-# join other drug descriptors
-#############################
-DRD.W6.1 <- inner_join(DRD.W0.2.x, DRD.W5.2,by = "TTDDRUGID")
-DRD.W6.1[is.na(DRD.W6.1)] <- FALSE
+# UNIPROT -> GO
+```{r}
+library(org.Hs.eg.db)
+columns(org.Hs.eg.db)
+u <- unique(drug2uniprot$UNIPROT.ID)
+u2g <- select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","GO")) %>% dplyr::select(UNIPROT, GO) %>% distinct()
+drug2go <- inner_join(drug2uniprot, u2g, by = c("UNIPROT.ID" = "UNIPROT")) %>% dplyr::select(-UNIPROT.ID) %>% distinct()
+drug2go <- drug2go[complete.cases(drug2go),]
+load("~/epilepsie_preprocessing_descrStat/data/gene_ontology/go-basic.obo.RData")
+drug2go <- inner_join(u2g, drug2go, by = "GO") %>% dplyr::select(-UNIPROT) %>% distinct() %>% as_tibble() %>% distinct()
+drug2go <- inner_join(drug2go, go.ontology, by = c("GO" = "go.id")) %>% dplyr::select(-GO) %>% distinct()
+drug2go <- drug2go %>% dplyr::rename(GO = TARGET.GO.CLASS.TERM)
+```
 
-# if one SUBSTANCENAME has many TTDDRUGID, then combine features
-#################################################################
-DRD.W6.2 <- DRD.W6.1 %>% dplyr::select(-TTDDRUGID) %>% distinct()
-DRD.W6.3 <- aggregate( x = DRD.W6.2, by = list(DRD.W6.2$SUBSTANCENAME, DRD.W6.2$PHARMCLS1),FUN=max, na.rm=TRUE)
+# UNIPROT -> PATHWAY
 
-DRD.W6.3 <- DRD.W6.3 %>% dplyr::select(-Group.1, -Group.2)
+## KEGG
+```{r}
+# drug2pathway1
+load("~/epilepsie_preprocessing_descrStat/data/TTD/TARGET_ONTOLOGY.RData") 
+TARGET_ONTOLOGY <- as_tibble(TARGET_ONTOLOGY[,-10])
+TARGET_ONTOLOGY <- TARGET_ONTOLOGY %>% dplyr::select(Pathway, UniProtID) %>% distinct()
+TARGET_ONTOLOGY <- NormalizeStrings(TARGET_ONTOLOGY)
+TARGET_ONTOLOGY <- TARGET_ONTOLOGY[complete.cases(TARGET_ONTOLOGY),]
+parseMe(TARGET_ONTOLOGY$Pathway)
+parseMe(TARGET_ONTOLOGY$UniProtID)
+TARGET_ONTOLOGY <- parseColByIdx(TARGET_ONTOLOGY, "Pathway")
+TARGET_ONTOLOGY <- parseColByIdx(TARGET_ONTOLOGY, "UniProtID")
+
+drug2pathway1 <- 
+  inner_join(drug2uniprot, TARGET_ONTOLOGY, by = c("UNIPROT.ID" = "UniProtID")) %>% 
+  dplyr::select(-UNIPROT.ID) %>% distinct()
+
+drug2pathway1 <- drug2pathway1[complete.cases(drug2pathway1),]
+
+# drug2pathway2
+u <- unique(drug2uniprot$UNIPROT.ID)
+
+uniprot2kegg <- 
+  select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","PATH")) %>% 
+  dplyr::select(UNIPROT, PATH) %>% distinct() %>% as_tibble()
+
+drug2pathway2 <- 
+  inner_join(drug2uniprot, uniprot2kegg, by = c("UNIPROT.ID" = "UNIPROT")) %>% 
+  dplyr::select(-UNIPROT.ID) %>% distinct()
+
+load("~/epilepsie_preprocessing_descrStat/data/KEGG/kegg_id2names.RData")
+kegg_id2names <- as_tibble(kegg_id2names)
+
+drug2pathway2 <- inner_join(drug2pathway2, kegg_id2names, by = c("PATH" = "KEGG.PATH.ID")) %>% dplyr::select(-PATH) %>% distinct()
+
+# drug2pathway.uniprot
+drug2pathway.kegg <- rbind(drug2pathway1, setNames(drug2pathway2, names(drug2pathway1))) %>% distinct()
+```
+
+## WIKI
+```{r}
+library(org.Hs.eg.db)
+columns(org.Hs.eg.db)
+u <- unique(drug2uniprot$UNIPROT.ID)
+uniprot2entrez <- 
+  select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","ENTREZID")) %>%
+  dplyr::select(UNIPROT, ENTREZID) %>% distinct()
+
+drug2entrez <- inner_join(drug2uniprot, uniprot2entrez, by = c("UNIPROT.ID" = "UNIPROT")) %>% dplyr::select(-UNIPROT.ID) %>% distinct()
+drug2entrez$ENTREZID <- as.integer(drug2entrez$ENTREZID)
+
+load("~/epilepsie_preprocessing_descrStat/data/wikipathways/entrez2wiki.RData")
+entrez2wiki <- as_tibble(entrez2wiki)
+
+drug2pathway.wiki <- inner_join(drug2entrez, entrez2wiki, by = "ENTREZID") %>% dplyr::select(-ENTREZID) %>% distinct()
+```
+
+## drug2pathway.uniprot
+```{r}
+drug2pathway.uniprot <- rbind(drug2pathway.kegg, drug2pathway.wiki %>% dplyr::rename(Pathway = PATH)) %>% distinct()
+```
+
+# DRUG -> PATHWAY
+```{r}
+load("~/epilepsie_preprocessing_descrStat/data/TTD/TARGET_ONTOLOGY.RData") 
+TARGET_ONTOLOGY <- as_tibble(TARGET_ONTOLOGY[,-10])
+TARGET_ONTOLOGY <- TARGET_ONTOLOGY %>% dplyr::select(Pathway, Drugs) %>% distinct()
+TARGET_ONTOLOGY <- NormalizeStrings(TARGET_ONTOLOGY)
+TARGET_ONTOLOGY <- TARGET_ONTOLOGY[complete.cases(TARGET_ONTOLOGY),]
+parseMe(TARGET_ONTOLOGY$Pathway)
+parseMe(TARGET_ONTOLOGY$Drugs)
+TARGET_ONTOLOGY <- parseColByIdx(TARGET_ONTOLOGY, "Pathway")
+TARGET_ONTOLOGY <- parseColByIdx(TARGET_ONTOLOGY, "Drugs")
+drug2pathway.direct <- inner_join(DRD2, TARGET_ONTOLOGY, by = c("names" = "Drugs")) %>% dplyr::select(-names) %>% distinct()
+```
+
+# DRUG -> TARGET -> PATHWAY
+
+## TTDDRUGID -> TTD
+```{r}
+load("~/epilepsie_preprocessing_descrStat/data/TTD/TARGET_ONTOLOGY.RData") 
+TARGET_ONTOLOGY <- as_tibble(TARGET_ONTOLOGY[,-10])
+TARGET_ONTOLOGY <- TARGET_ONTOLOGY %>% dplyr::select(TTDID, Drugs) %>% distinct()
+TARGET_ONTOLOGY <- NormalizeStrings(TARGET_ONTOLOGY)
+TARGET_ONTOLOGY <- TARGET_ONTOLOGY[complete.cases(TARGET_ONTOLOGY),]
+parseMe(TARGET_ONTOLOGY$TTDID)
+parseMe(TARGET_ONTOLOGY$Drugs)
+TARGET_ONTOLOGY <- parseColByIdx(TARGET_ONTOLOGY, "Drugs")
+TTDDRUGID2TTD <- inner_join(DRD2, TARGET_ONTOLOGY, by = c("names" = "Drugs"))  %>% dplyr::select(-names) %>% distinct()
+```
+
+## TTDID -> PATHWAYS
+```{r}
+TARGET2KEGGPATHWAYS <- 
+  tbl(src,"REFERENCE.TARGET2KEGGPATHWAYS") %>% 
+  collect() %>% 
+  dplyr::select(-KEGG_PATHWAYID) %>%
+  dplyr::rename(PATHWAY = KEGG_PATHWAY_NAME) %>% 
+  distinct()
+
+TARGET2WIKIPATHWAYS <-
+  tbl(src,"REFERENCE.TARGET2WIKIPATHWAYS") %>% 
+  collect() %>% 
+  dplyr::select(-WIKI_PATHWAY_ID) %>%
+  dplyr::rename(PATHWAY = WIKI_PATHWAY_NAME) %>% 
+  distinct()
+
+TARGETPATHWAYS <- rbind(TARGET2KEGGPATHWAYS, TARGET2WIKIPATHWAYS) %>% distinct()
+TARGETPATHWAYS <- NormalizeStrings(TARGETPATHWAYS) %>% distinct()
+```
+
+## drug2pathway.target
+```{r}
+drug2pathway.target <- inner_join(TTDDRUGID2TTD, TARGETPATHWAYS, by = "TTDID") %>% dplyr::select(-TTDID)
+```
+
+# pathway pool
+```{r}
+names <- c("TTDDRUGID","PATHWAY")
+drug2pathway.target <- setNames(drug2pathway.target,names)
+drug2pathway.direct <- setNames(drug2pathway.direct,names)
+drug2pathway.uniprot <- setNames(drug2pathway.uniprot,names)
+drug2pathway <- rbind(drug2pathway.target, drug2pathway.direct, drug2pathway.uniprot) %>% distinct()
+drug2pathway$PATHWAY <- make.names(drug2pathway$PATHWAY)
+drug2pathway <- unique(drug2pathway)
+```
+
+# Feature Pool Input
+
+## feature stats function
+```{r}
+FeatStats <- function(feature) {
+  #dim <- dim(feature)
+  featureName <- colnames(feature)
+  n <- apply(feature,2, function(x) length(unique(x)))
+  stats <- data.frame(featureName,n, row.names = NULL)
+  return(knitr::kable(stats))
+}
+```
+
+## create fi (feature input)
+```{r}
+fi.DRD1 <- DRD1 %>% dplyr::select(-names) %>% distinct()
+fi.DRD1 <- parseColByIdx(fi.DRD1,"PHARMCLS1")
+FeatStats(fi.DRD1)
+
+fi.drug2indications <- drug2indications %>% dplyr::select(-PHEWAS_CODE, -PHEWAS_CODE_HL) %>% distinct()
+
+fi.drug2sideeffects <- drug2sideeffects %>% dplyr::rename(SIDEEFFECTS = MEDDRA)
+
+fi.drug2go <- drug2go
+
+fi.drug2pathway <- drug2pathway
+```
+
+# Feature Pool Output
+```{r}
+# replace TTDDRUGID with SUBSTANCENAMES
+T2S <- DRD1 %>% dplyr::select(SUBSTANCENAME, TTDDRUGID) %>% distinct()
+AddSubstancenames <- function(x) inner_join(x, T2S) %>% dplyr::select(-TTDDRUGID) %>% distinct()
+fo.DRD1               <- fi.DRD1 %>% dplyr::select(-TTDDRUGID) %>% distinct()
+fo.drug2indications   <- AddSubstancenames(fi.drug2indications)
+fo.drug2indications.1 <- fo.drug2indications %>% dplyr::select(-PHEWAS_STRING) %>% distinct()
+fo.drug2indications.2 <- fo.drug2indications %>% dplyr::select(-PHEWAS_STRING_HL) %>% distinct()
+fo.drug2sideeffects   <- AddSubstancenames(fi.drug2sideeffects)
+fo.drug2go            <- AddSubstancenames(fi.drug2go)
+fo.drug2pathway       <- AddSubstancenames(fi.drug2pathway)
+
+# make.names()
+My.make.names <- function(x) apply(x, 2, make.names) %>% as_tibble() %>% distinct()
+fo.DRD1             <- My.make.names(fo.DRD1)
+fo.drug2indications <- My.make.names(fo.drug2indications)
+fo.drug2sideeffects <- My.make.names(fo.drug2sideeffects)
+fo.drug2go          <- My.make.names(fo.drug2go)
+fo.drug2pathway     <- My.make.names(fo.drug2pathway)
+
+# stats for fo's
+FeatStats(fo.DRD1)
+FeatStats(fo.drug2indications.1)
+FeatStats(fo.drug2indications.2)
+FeatStats(fo.drug2sideeffects)
+FeatStats(fo.drug2go)
+FeatStats(fo.drug2pathway)
+
+# spread features for joins
+fo.DRD1               <- spread(data.frame(fo.DRD1,key=1), PHARMCLS1, key, fill = 0, sep = ".x.")
+fo.drug2indications.1 <- spread(data.frame(fo.drug2indications.1,key=1), PHEWAS_STRING_HL, key, fill = 0, sep = ".x.")
+fo.drug2indications.2 <- spread(data.frame(fo.drug2indications.2,key=1), PHEWAS_STRING, key, fill = 0, sep = ".x.")
+fo.drug2go            <- spread(data.frame(fo.drug2go,key=1), GO, key, fill = 0, sep = ".x.")
+fo.drug2pathway       <- spread(data.frame(fo.drug2pathway,key=1), PATHWAY, key, fill = 0, sep = ".x.")
+
+## spread drug2sideffects
+unique(fo.drug2sideeffects$WHO)
+drug2sideffects.format <- data.frame(WHO = c("VERY_RARE","RARE","UNCOMMON","COMMON","VERY_COMMON"), value = 1:5, stringsAsFactors = FALSE)
+fo.drug2sideeffects   <- left_join(fo.drug2sideeffects,drug2sideffects.format) %>% dplyr::select(-WHO)
+fo.drug2sideeffects   <- aggregate(value ~., fo.drug2sideeffects, FUN = min) %>% as_tibble
+fo.drug2sideeffects   <- left_join(fo.drug2sideeffects,drug2sideffects.format) %>% dplyr::select(-value)
+fo.drug2sideeffects   <- spread(fo.drug2sideeffects, SIDEEFFECTS, WHO, fill = "0", sep = ".x.")
+```
+
+# combine fo.* to drug.features
+```{r}
+drug.features <-
+  fo.DRD1 %>% 
+  left_join(fo.drug2indications.1) %>% 
+  left_join(fo.drug2indications.2) %>% 
+  left_join(fo.drug2go) %>% 
+  left_join(fo.drug2pathway) %>% 
+  left_join(fo.drug2sideeffects)
+knitr::kable(data.frame(class=c("substances","features"),n=dim(drug.features)))
 ```
 
 # save feature matrix
 ```{r}
-DRUG.FEATMAT.AED <- DRD.W6.3
-save(DRUG.FEATMAT.AED,file = "atogQueries/DRUG.FEATMAT.AED.RData",compress = T)
-
+save(drug.features,file = "output/featureMatrix/DRUG.FEATMAT.RData",compress = T)
 ```
-
