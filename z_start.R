@@ -22,6 +22,61 @@ library(gplots)
 # functions #
 #############
 
+KeepIncidentAndCensored <- function(PATIENTS_AGE_REGION) {
+  # - keep only patients which have
+  # -- an incident main-comorbidity (= event subpopulation)
+  # -- or no main-comorbidity at any time (= censored subpopulation)
+  
+  #  A: patients without any main-comorbidity
+  anyMc  <- PATIENTS_AGE_REGION %>% filter(!is.na(MAIN.COMORB)) %>% dplyr::select(ENROLID) %>% distinct()
+  allPat <- PATIENTS_AGE_REGION %>% dplyr::select(ENROLID) %>% distinct()
+  A   <- setdiff(allPat$ENROLID, anyMc$ENROLID)
+  
+  # patients with main-comorbidities
+  main.comorb.first.ixday <- PATIENTS_AGE_REGION %>% filter(MAIN.COMORB != "") %>% dplyr::select(ENROLID, IXDAYS,  MAIN.COMORB) %>% distinct()
+  main.comorb.first.ixday <- aggregate(IXDAYS ~., data = main.comorb.first.ixday, FUN = min)
+  
+  # B: patients with incident main-comorbidities
+  B <- main.comorb.first.ixday %>% filter(IXDAYS >= 180) %>% dplyr::select(ENROLID) %>% distinct()
+  
+  # combine A and B to retrieve relevant population
+  relPop <- c(A, B$ENROLID)
+  
+  PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% relPop)
+  return(PATIENTS_AGE_REGION)
+}
+
+####################
+
+AddMainComorb <- function(PATIENTS_AGE_REGION) {
+  # - flag the particular main-comorbidity
+  
+  # list of PHEWAS_STRINGS with their assignments to co-morbidiets
+  MAIN.COMORB <- c("Hypertension","Diabetes","Hyperlipidemia","Anxiety","Migraine","Depression","Stroke.IschemAttack")
+  MAIN.COMORB.PHEWAS <- vector("list",length(MAIN.COMORB))
+  names(MAIN.COMORB.PHEWAS) <- MAIN.COMORB
+  MAIN.COMORB.PHEWAS$Hypertension <- c("Essential hypertension")
+  MAIN.COMORB.PHEWAS$Diabetes <- c("Type 2 diabetes")
+  MAIN.COMORB.PHEWAS$Hyperlipidemia <- c("Hyperlipidemia","Mixed hyperlipidemia")
+  MAIN.COMORB.PHEWAS$Anxiety <- c("Anxiety disorder","Generalized anxiety disorder","Anxiety, phobic and dissociative disorders","Agorophobia, social phobia, and panic disorder")
+  MAIN.COMORB.PHEWAS$Stroke.IschemAttack <- c("Ischemic stroke", "Transient cerebral ischemia")
+  MAIN.COMORB.PHEWAS$Migraine <- c("Migraine","Migrain with aura")
+  MAIN.COMORB.PHEWAS$Depression <- c("Depression","Major depressive disorder")
+  
+  # comorb-list to df, join PHEWAS frequency
+  MAIN.COMORB.PHEWAS <-
+    data.frame (cbind(
+      MAIN.COMORB = as.character(unlist(mapply(rep, MAIN.COMORB, unlist(lapply( MAIN.COMORB.PHEWAS, length))))),
+      PHEWAS_STRING = as.character(unlist(MAIN.COMORB.PHEWAS))
+    ), row.names = NULL, stringsAsFactors = FALSE)
+  
+  knitr::kable(MAIN.COMORB.PHEWAS)
+  
+  # add main-comorbidity to patients table
+  PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
+  return(PATIENTS_AGE_REGION)
+}
+
 ###############
 # detect number of delimiters
 parseMe <- function(x) {
@@ -38,7 +93,7 @@ Diag_frequency <- function(P) {
   nPat <- P %>% dplyr::select(ENROLID) %>% distinct() %>% tally() %>% as.numeric()
   freq.DIAG <- P %>% 
     filter(DIAG != "") %>% 
-    select(ENROLID, DIAG) %>% 
+    dplyr::select(ENROLID, DIAG) %>% 
     distinct() %>% 
     group_by(DIAG) %>% 
     tally(sort = TRUE) %>% 
@@ -50,7 +105,7 @@ Diag_frequency <- function(P) {
 
 # standardized filter for patients table
 
-FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, age = "adult") {
+FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
   
   PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
   
