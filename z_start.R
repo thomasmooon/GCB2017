@@ -22,7 +22,6 @@ library(gplots)
 # functions #
 #############
 
-<<<<<<< HEAD
 KeepIncidentAndCensored <- function(PATIENTS_AGE_REGION) {
   # - keep only patients which have
   # -- an incident main-comorbidity (= event subpopulation)
@@ -95,14 +94,6 @@ Diag_frequency <- function(P) {
   freq.DIAG <- P %>% 
     filter(DIAG != "") %>% 
     dplyr::select(ENROLID, DIAG) %>% 
-=======
-# count number of patients per DIAG (ICD9)
-
-Diag_frequency <- function(P) {
-  freq.DIAG <- P %>% 
-    filter(DIAG != "") %>% 
-    select(ENROLID, DIAG) %>% 
->>>>>>> drugDescrAllNew
     distinct() %>% 
     group_by(DIAG) %>% 
     tally(sort = TRUE) %>% 
@@ -114,12 +105,8 @@ Diag_frequency <- function(P) {
 
 # standardized filter for patients table
 
-<<<<<<< HEAD
 FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
-=======
-FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, age = "adult") {
->>>>>>> drugDescrAllNew
-  
+
   PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
   
   source("functions/n_patient_per_period.R")
