@@ -1,0 +1,439 @@
+---
+title: "feature Matrix adult"
+author: "Thomas Gerlach"
+subtitle: "featureMatrixAdult.Rmd"
+output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+# setup
+```{r start, echo=FALSE, include = FALSE}
+rm(list=setdiff(ls(), "TABLE04SAS7BDAT"))
+knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7) # markdown
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
+```
+
+## global parameters
+```{r, echo = FALSE, include = FALSE}
+
+# params
+params <- vector("list")
+params$thres.subst.freq   <- 2
+params$thres.disease.freq <- 2
+```
+
+# filter patients
+```{r standardize population, echo=FALSE}
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
+
+# normalize medical history by cutoff
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
+
+# delete DIAG terms with E or V prefix
+EV <- grep("E|V",PATIENTS_AGE_REGION$DIAG)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION[-EV,]
+
+# add phewas and phewas_hl
+source("functions/add_Phew_PhewHighlevel.R")
+PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+
+# add main-comorbidities
+PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION)
+
+# filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
+PATIENTS_AGE_REGION <- KeepIncidentAndCensored(PATIENTS_AGE_REGION)
+```
+
+# load feature matrices: disease and drug descriptors
+```{r}
+load("output/featureMatrix/DISEASE.FEATMAT.RData")
+load("output/featureMatrix/DRUG.FEATMAT.RData")
+DRUG.FEATMAT <- DRD.W6.3
+#
+rm(DRD.W6.3)
+```
+
+# preprocessing
+```{r}
+PAT.FEATMAT <- as_tibble(PATIENTS_AGE_REGION)
+
+## indexdate to quarter
+PAT.FEATMAT$quarter <- floor(PAT.FEATMAT$IXDAYS/90)
+PAT.FEATMAT$quarter <- gsub("-","m",PAT.FEATMAT$quarter)
+
+## parse ICD9 Codes
+PAT.FEATMAT <- ParseICD9(PAT.FEATMAT) 
+
+## drop unessential columns
+PAT.FEATMAT.QUARTQTY.0 <- PAT.FEATMAT
+
+PAT.FEATMAT <- 
+  PAT.FEATMAT %>%
+  select(ENROLID, SUBSTANCENAME, MHSAFL, DIAG, HOSPFL, DAYSUPP, METQTY, AGE, REGION, SEX, quarter) %>%
+  distinct()
+```
+
+## filter SUBSTANCES in PATIENTS-table by frequency
+```{r}
+subst.freq <- 
+  SUBSTANCE_FREQUENCY(PATIENTS_AGE_REGION) %>%
+  filter(freq >= params$thres.subst.freq) %>%
+  select(SUBSTANCENAME)
+
+PAT.FEATMAT.S  <- 
+  PAT.FEATMAT %>%  
+  filter(SUBSTANCENAME %in% relevant.subst$SUBSTANCENAME)
+
+DRUG.FEATMAT <- 
+  DRUG.FEATMAT %>% 
+  filter(SUBSTANCENAME %in% relevant.subst$SUBSTANCENAME)
+```
+
+## filter DISEASES in PATIENTS-table by frequency
+create PAT.FEATMAT.D
+```{r}
+freq.DIAG <-
+  Diag_frequency(PAT.FEATMAT) %>% 
+  filter(freq >= params$thres.disease.freq) %>%
+  select(DIAG)
+
+PAT.FEATMAT.D <- 
+  PAT.FEATMAT %>%  
+  filter(DIAG %in% relevant.diag$DIAG)
+
+DISEASES.FEATMAT <-
+  DISEASES.FEATMAT %>% 
+  filter(DISEASE.ICD9 %in% relevant.diag$DIAG)
+```
+
+## delete DIAG's / SUBSTANCENAME's in towrop with above, but with frequency < thres
+```{r}
+x <- PAT.FEATMAT.S %>% select(DIAG) %>% filter(!(DIAG %in% relevant.diag$DIAG), !is.na(DIAG)) %>% distinct()
+PAT.FEATMAT.S$DIAG[PAT.FEATMAT.S$DIAG %in% x$DIAG] <- NA
+
+x <- PAT.FEATMAT.D %>% select(SUBSTANCENAME) %>% filter(!(SUBSTANCENAME %in% relevant.subst$SUBSTANCENAME), SUBSTANCENAME != "") %>% distinct()
+PAT.FEATMAT.D$SUBSTANCENAME[PAT.FEATMAT.D$SUBSTANCENAME %in% x$SUBSTANCENAME] <- NA
+```
+
+## recombine
+PAT.FEATMAT.S + FAT.FEATMAT.D
+```{r}
+PAT.FEATMAT <- as_tibble(rbind(PAT.FEATMAT.S, PAT.FEATMAT.D) %>% distinct())
+PAT.FEATMAT[is.na(PAT.FEATMAT)] <- FALSE
+rm(PAT.FEATMAT.S, PAT.FEATMAT.D)
+```
+
+
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# retrieve features from PATIENT_AGE_REGION: split PAT.FEATMAT to enable columnwise feature representation
+- .P = patient related (AGE, SEX, REGION, HOSPFL)
+- .S = substance related (SUBSTANCENAME, MHSAFL, METQTY)
+- .D = disease related (DIAG)
+
+## PAT.FEATMAT.P
+Patient-only related data (AGE, SEX, REGION, HOSPFL)
+```{r}
+PAT.FEATMAT.P <- PAT.FEATMAT %>% select(ENROLID, AGE, SEX, REGION, HOSPFL, quarter) %>% distinct()
+PAT.FEATMAT.P$quarter <- paste("HOSPFL.quarter.",PAT.FEATMAT.P$quarter,sep="")
+PAT.FEATMAT.P <- as_tibble(aggregate(HOSPFL ~., data = PAT.FEATMAT.P, FUN = function(x) max(x)))
+PAT.FEATMAT.P <- as_tibble(spread(PAT.FEATMAT.P, key=quarter, value = HOSPFL, fill = FALSE))
+```
+
+## PAT.FEATMAT.S
+SUBSTANCENAME as feature itself
+```{r}
+PAT.FEATMAT.S <- PAT.FEATMAT %>% 
+  filter(SUBSTANCENAME != "") %>% 
+  select(ENROLID, SUBSTANCENAME, quarter) %>% 
+  distinct()
+
+PAT.FEATMAT.S$quarter <-
+  make.names(
+    paste(
+      "SUBSTANCENAME.",
+      PAT.FEATMAT.S$SUBSTANCENAME,
+      ".quarter.",
+      PAT.FEATMAT.S$quarter,
+      sep = ""
+    )
+  )
+PAT.FEATMAT.S$val <- TRUE
+PAT.FEATMAT.S <- PAT.FEATMAT.S %>% select(-SUBSTANCENAME) 
+PAT.FEATMAT.S <- spread(PAT.FEATMAT.S, key = quarter, val = val, fill = FALSE)
+```
+
+## PAT.FEATMAT.S.MHSAFL (by PHARMCLS1)
+explain MHSAFL as a function of PHARMCLS1 and not SUBSTANCENAME
+```{r}
+PAT.FEATMAT.S.MHSAFL <- 
+  PAT.FEATMAT %>% 
+  filter(SUBSTANCENAME != "") %>% 
+  select(ENROLID, SUBSTANCENAME, MHSAFL, quarter) %>% 
+  distinct()
+
+PAT.FEATMAT.S.MHSAFL <- as_tibble( aggregate( MHSAFL ~., data = PAT.FEATMAT.S.MHSAFL, FUN = max) )
+
+subst2pk <- 
+  PATIENTS_AGE_REGION %>% 
+  filter(SUBSTANCENAME %in% unique(PAT.FEATMAT.S.MHSAFL$SUBSTANCENAME)) %>% 
+  filter(PHARMCLS1 != "") %>%
+  select(SUBSTANCENAME, PHARMCLS1) %>%
+  distinct()
+
+PAT.FEATMAT.S.MHSAFL <- left_join(PAT.FEATMAT.S.MHSAFL, subst2pk)
+PAT.FEATMAT.S.MHSAFL <- PAT.FEATMAT.S.MHSAFL %>% select(-SUBSTANCENAME) %>% distinct()
+PAT.FEATMAT.S.MHSAFL <- PAT.FEATMAT.S.MHSAFL %>% filter(!is.na(PHARMCLS1))
+
+PAT.FEATMAT.S.MHSAFL$quarter <-
+  make.names(
+    paste(
+      "MHSAFL.PHARMCLS1.",
+      PAT.FEATMAT.S.MHSAFL$PHARMCLS1,
+      ".quarter.",
+      PAT.FEATMAT.S.MHSAFL$quarter,
+      sep = ""
+    )
+  )
+
+PAT.FEATMAT.S.MHSAFL <- PAT.FEATMAT.S.MHSAFL %>% select(-PHARMCLS1) %>% distinct()
+PAT.FEATMAT.S.MHSAFL <- as_tibble(aggregate(MHSAFL ~., data = PAT.FEATMAT.S.MHSAFL, FUN = max)) %>% distinct() # aggregate MHSAFL (max)
+PAT.FEATMAT.S.MHSAFL <- spread(PAT.FEATMAT.S.MHSAFL, key = quarter, val = MHSAFL, fill = FALSE)
+```
+
+### METQTY * DAYSUPP -> QUARTQTY
+Compute the drug quantitity per quarter, given METQTY and DAYSUPP.
+```{r}
+q1 <- PAT.FEATMAT.QUARTQTY.0 %>% 
+  filter(SUBSTANCENAME %in% relevant.subst$SUBSTANCENAME) %>% 
+  select(ENROLID, SUBSTANCENAME, STARTDT, ENDDT, INDEXDT, METQTY) %>% filter(SUBSTANCENAME != "") %>%
+  distinct()
+
+q1$START <- as.numeric(q1$STARTDT - q1$INDEXDT)
+q1$END   <- as.numeric(q1$ENDDT - q1$INDEXDT)
+q1       <- q1 %>% select(-INDEXDT, -STARTDT, -ENDDT) %>% distinct()
+
+#######################
+getQUARTQTY.s <- function(x){
+  ENROLID       <- as.character(x[1])
+  SUBSTANCENAME <- as.character(x[2])
+  metqty  <- as.numeric(as.character(x[3]))
+  startdt <- as.numeric(as.character(x[4]))
+  enddt   <- as.numeric(as.character(x[5]))
+  # metqty  <- x[3]
+  # startdt <- x[4]
+  # enddt   <- x[5]
+  x1 <- floor(startdt:enddt / 90)
+  x2 <- rep(metqty,length(x1))
+  x3 <- cbind(quarter = x1, QUARTQTY = x2, row.names = NULL)
+  x4 <- aggregate(QUARTQTY ~ quarter, data=x3, sum )
+  x5 <- data.frame(cbind(ENROLID,SUBSTANCENAME,x4, row.names=NULL), stringsAsFactors = FALSE)
+  return(x5)
+}
+#######################
+wrap.getQUARTQTY.s <- function(data,ncores=10) {
+  library(doMC)
+  library(foreach)
+  start              <- floor(seq(1,nrow(data),length.out = ncores+1)[-ncores-1])
+  stop               <- floor(seq(1,nrow(data),length.out = ncores+1)[-1]-1)
+  stop[length(stop)] <- stop[length(stop)]+1
+  newdata            <- vector("list",ncores)
+  for(l in 1:ncores) {
+    newdata[[l]] <- data[start[l] : stop[l], ]
+  }
+  registerDoMC(cores=ncores)
+  y <- foreach(i = 1:length(newdata), .combine=rbind) %dopar% {
+    tmp <- c()
+    for (k in 1:nrow(newdata[[i]])) {
+      tmp <- rbind(tmp, getQUARTQTY.s(newdata[[i]][k,]))
+    }
+    return(tmp)
+  }
+  return(y)
+}
+#######################
+
+start <- proc.time()
+PAT.FEATMAT.QUARTQTY.m <- wrap.getQUARTQTY.s(q1 %>% select(ENROLID, SUBSTANCENAME, METQTY, START, END) %>% distinct(),10)
+stop <- proc.time() - start
+stop[3] / 60
+
+colnames(PAT.FEATMAT.QUARTQTY.m) <- c("ENROLID", "SUBSTANCENAME", "quarter", "QUARTQTY")
+
+PAT.FEATMAT.QUARTQTY.m$quarter <-
+  paste(
+    "QUARTQTY.",
+    PAT.FEATMAT.QUARTQTY.m$SUBSTANCENAME,".",
+    "quarter.",
+    PAT.FEATMAT.QUARTQTY.m$quarter,
+    sep = ""
+  )
+
+PAT.FEATMAT.QUARTQTY.m$quarter <- make.names(gsub("-","m",PAT.FEATMAT.QUARTQTY.m$quarter))
+PAT.FEATMAT.QUARTQTY.m <- PAT.FEATMAT.QUARTQTY.m %>% select(-SUBSTANCENAME) %>% distinct()
+PAT.FEATMAT.QUARTQTY.m$QUARTQTY <- as.numeric(PAT.FEATMAT.QUARTQTY.m$QUARTQTY)
+PAT.FEATMAT.QUARTQTY.m <- aggregate(QUARTQTY ~ ., data = PAT.FEATMAT.QUARTQTY.m, FUN = sum)
+PAT.FEATMAT.QUARTQTY   <- spread(PAT.FEATMAT.QUARTQTY.m, key = quarter, val = QUARTQTY)
+```
+
+## PAT.FEATMAT.D.raw and PAT.FEATMAT.S.raw
+```{r}
+PAT.FEATMAT.D.raw <- PAT.FEATMAT %>% select(ENROLID, DIAG, quarter) %>% filter(DIAG != "") %>% distinct()
+delmeV <- (grep(pattern = "V", PAT.FEATMAT.D.raw$DIAG))
+delmeE <- (grep(pattern = "E", PAT.FEATMAT.D.raw$DIAG))
+PAT.FEATMAT.D.raw <- PAT.FEATMAT.D.raw[-c(delmeV, delmeE),]
+PAT.FEATMAT.S.raw <- PAT.FEATMAT %>% select(ENROLID, SUBSTANCENAME, quarter) %>% filter(SUBSTANCENAME != "") %>% distinct()
+rm(delmeV, delmeE)
+```
+
+# combine all PAT.FEATMAT features 
+0. Prepare 5.1 and 5.2
+1. PAT.FEATMAT.P # take this as first one and subsequently add the other which occur below to this
+2. PAT.FEATMAT.QUARTQTY
+3. PAT.FEATMAT.S
+4. PAT.FEATMAT.MHSAFL # remember: substance abuse with respect to PHARMCLS1
+5.1. PAT.FEATMAT.D.raw + DISEASES.FEATMAT # take as last one, because you need to split it by quarters
+5.2. PAT.FEATMAT.S.raw + DRUG.FEATMAT # same as 5.1
+
+###########
+bis hierhin
+###########
+
+## 0. Prepare  (5.1.) and (5.2.)
+Drop entries in PAT.FEATMAT.D / PAT.FEATMAT.S which don't occur
+in DISEASES.FEATMAT / DRUG.FEATMAT
+```{r}
+
+# DISEASE
+#########
+PAT.FEATMAT.D.raw <- PAT.FEATMAT.D.raw %>% filter(DIAG %in% DISEASES.FEATMAT$DISEASE.ICD9) %>% distinct()
+PAT.FEATMAT.D.list <- vector("list",length = n_distinct(PAT.FEATMAT.D.raw$quarter))
+names(PAT.FEATMAT.D.list) <- unique(PAT.FEATMAT.D.raw$quarter)
+
+for (n in names(PAT.FEATMAT.D.list)) {
+  PAT.FEATMAT.D.list[[which(names(PAT.FEATMAT.D.list) == n)]] <- PAT.FEATMAT.D.raw %>% filter(quarter == n) %>% distinct()
+}
+
+for (n in length(PAT.FEATMAT.D.list)) {
+  PAT.FEATMAT.D.list[[n]] <- 
+    PAT.FEATMAT.D.list[[n]] %>% 
+    left_join(DISEASES.FEATMAT, by = c("DIAG" = "DISEASE.ICD9")) %>% 
+    select(-DIAG, - quarter) %>% 
+    distinct()
+  
+  colnames(PAT.FEATMAT.D.list[[n]]) <-
+    c("ENROLID",
+      paste(colnames(PAT.FEATMAT.D.list[[n]])[-1],"quarter",names(PAT.FEATMAT.D.list[n]), sep = ".")
+      )
+}
+
+# SUBSTANCES
+############
+PAT.FEATMAT.S.raw <- PAT.FEATMAT.S.raw %>% filter(SUBSTANCENAME %in% DRUG.FEATMAT$SUBSTANCENAME) %>% distinct()
+PAT.FEATMAT.S.list <- vector("list",length = n_distinct(PAT.FEATMAT.S.raw$quarter))
+names(PAT.FEATMAT.S.list) <- unique(PAT.FEATMAT.S.raw$quarter)
+
+for (n in names(PAT.FEATMAT.S.list)) {
+  PAT.FEATMAT.S.list[[which(names(PAT.FEATMAT.S.list) == n)]] <- PAT.FEATMAT.S.raw %>% filter(quarter == n) %>% distinct()
+}
+
+for (n in length(PAT.FEATMAT.S.list)) {
+  PAT.FEATMAT.S.list[[n]] <- 
+    PAT.FEATMAT.S.list[[n]] %>% 
+    left_join(DRUG.FEATMAT, by = "SUBSTANCENAME") %>% 
+    select(-SUBSTANCENAME, - quarter) %>% 
+    distinct()
+  
+  colnames(PAT.FEATMAT.S.list[[n]]) <-
+    c("ENROLID",
+      paste(colnames(PAT.FEATMAT.S.list[[n]])[-1],"quarter",names(PAT.FEATMAT.S.list[n]), sep = ".")
+      )
+}
+
+```
+
+# set main-comorbidity FLAG + value
+
+## flag for each main-comorbidity
+
+### match ICD9 to MAIN-CM
+```{r}
+MAIN.COMORB <- c("Hypertension","Diabetes","Hyperlipidemia","Anxiety","Migraine","Depression","Stroke.IschemAttack")
+MAIN.COMORB.PHEWAS <- vector("list",length(MAIN.COMORB))
+names(MAIN.COMORB.PHEWAS) <- MAIN.COMORB
+MAIN.COMORB.PHEWAS$Hypertension <- c("Essential hypertension")
+MAIN.COMORB.PHEWAS$Diabetes <- c("Type 2 diabetes")
+MAIN.COMORB.PHEWAS$Hyperlipidemia <- c("Hyperlipidemia","Mixed hyperlipidemia")
+MAIN.COMORB.PHEWAS$Anxiety <- c("Anxiety disorder","Generalized anxiety disorder","Anxiety, phobic and dissociative disorders","Agorophobia, social phobia, and panic disorder")
+MAIN.COMORB.PHEWAS$Stroke.IschemAttack <- c("Ischemic stroke", "Transient cerebral ischemia")
+MAIN.COMORB.PHEWAS$Migraine <- c("Migraine","Migrain with aura")
+MAIN.COMORB.PHEWAS$Depression <- c("Depression","Major depressive disorder")
+
+# comorb-list to df, join PHEWAS frequency
+MAIN.COMORB.PHEWAS <-
+  data.frame (cbind(
+    MAIN.COMORB = as.character(unlist(mapply(rep, MAIN.COMORB, unlist(lapply( MAIN.COMORB.PHEWAS, length))))),
+    PHEWAS_STRING = as.character(unlist(MAIN.COMORB.PHEWAS))
+  ), row.names = NULL, stringsAsFactors = FALSE)
+
+# PHEWAS to ICD9
+ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% select(PHEWAS_STRING, ICD9) %>% distinct() %>% collect()
+MAIN.COMORB.PHEWAS <- left_join(MAIN.COMORB.PHEWAS, ICD9GROUPING , by = "PHEWAS_STRING" )
+rm(ICD9GROUPING)
+```
+
+### flag incident MAIN-CM by related ICD9 Codes
+```{r}
+PAT.MC.FLAG <- 
+  PAT.FEATMAT %>% 
+  select(ENROLID, DIAG, IXDAYS) %>% 
+  left_join(MAIN.COMORB.PHEWAS %>% select(MAIN.COMORB, ICD9) %>% distinct(), by = c("DIAG"="ICD9")) %>% # add MC term
+  select(-DIAG) %>% 
+  distinct()
+
+# min IXDAY related to DIAG, then min IXDAY related to MAIN.COMORB
+x <- aggregate(IXDAYS ~., PAT.MC.FLAG, min) %>% select(-DIAG) %>% distinct()
+x <- aggregate(IXDAYS ~., x, min) %>% mutate(isIncident = IXDAYS >= 180) %>% distinct()
+
+PAT.MC.FLAG.inc <- spread(x %>% select(-IXDAYS) %>% distinct(), key = MAIN.COMORB, val = isIncident, fill = FALSE) # flag == TRUE if CM is incident
+PAT.MC.TIME <- spread(x %>% select(-isIncident), key = MAIN.COMORB, val = IXDAYS, fill = 0) # substitute IXDAYS < 180 
+
+# wherever IXDAYS <180 in PAT.MC.TIME, substitute value by the max(observation time|enrolid)
+PAT.maxObsTime <- PAT.FEATMAT %>% select(ENROLID, IXDAYS) %>% group_by(ENROLID) %>% max()
+glimpse(PAT.maxObsTime)
+sum(is.na())# check
+
+PAT.MC.TIME <- left_join(PAT.MC.TIME, PAT.maxObsTime, by = "ENROLID")
+for(k in 1:nrow(PAT.MC.TIME)) {
+  newval <- PAT.MC.TIME[k,-c(1,ncol(PAT.MC.TIME))] < 180
+  PAT.MC.TIME[k,-c(1,ncol(PAT.MC.TIME))] <- PAT.MC.TIME[k,ncol(PAT.MC.TIME)]
+}
+
+
+
+
+```
+
+### set value for each flag
+if yes: IXDAY of DIAGNOSIS
+if no: latest observed IXDAY
+
+# imputation of missing values, variable transformation
+- missing values / NAs to 0
+- replace TRUE / FALSE with 1/0
+- quarter: num to char, replace "-" in negative quarters
+```{r}
+
+make.names(unique(PAT.FEATMAT$quarter))
+make.names(7,7)
+
+```
+
+
+
+# Drop all indicator variables with occurrence frequency below 5% of all patients.

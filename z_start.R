@@ -104,10 +104,9 @@ Diag_frequency <- function(P) {
 #####################
 
 # standardized filter for patients table
-
 FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
-
-  PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+  
+  PATIENTS_AGE_REGION <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
   
   source("functions/n_patient_per_period.R")
   source("functions/patient_monthly_enrolment.R")
@@ -116,29 +115,54 @@ FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
   source("functions/aggregate_AED_substancenames.R")
   source("functions/add_Phew_PhewHighlevel.R")
   
-  # add information
+  # filtering and parsing
   ##################
-  # set AED flag
-  PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
-  # Add Age and Regional Information
-  PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
-  # match PHEWAS terms to ICD9 terms
-  PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
   
-  # filter
-  ########
   # Keep only patients within valid time period 
   PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
   # only patients with non-negative DAYSUP
   PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
+  # Add Age and Regional Information
+  PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
   # adult only (AGE >= 18)
   PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
+  
+  # deseparate substancenames
+  PATIENTS_AGE_REGION <- parseColByIdx(PATIENTS_AGE_REGION,"SUBSTANCENAME",sep = ";")
+  # set AED flag
+  PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
   # only patients which were treated with AEDs
   pat.with.aeds <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% dplyr::select(ENROLID) %>% distinct()
   PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
+    # add phewas and phewas_hl
+  PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
   
   # return
   return(PATIENTS_AGE_REGION)
+}
+
+####################
+
+parseColByIdx <- function(data, colname,sep=";") {
+  
+  keyIdx  <- which(colnames(data) %in% colname)
+  isEmpty <- data[,keyIdx] == "" & is.na(data[,keyIdx])
+  data    <- data[!isEmpty,]
+  
+  parse         <- data[,keyIdx]
+  parsed.list   <- sapply(parse, function(x) strsplit(x,split = sep))
+  reps          <- sapply(parsed.list,length)
+  
+  parsed        <- unlist(parsed.list)
+  cnames        <- c(colnames(data[,-keyIdx]),colname)
+  
+  row.reps      <- unlist(mapply(rep, 1:length(reps), reps))
+  data.new      <- cbind(data[row.reps, - keyIdx], parsed)
+  colnames(data.new) <- cnames
+  
+  data.new <- sapply(data.new,function(x) as.character(x)) %>% as_tibble() %>% distinct()
+  
+  return(data.new)
 }
 
 ####################
@@ -330,50 +354,7 @@ aed_ranking <- function(patient_table) {
   return(a)
 }
 
-########################
 
-FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, age="adult") {
-  
-  # patient table
-  PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
-  
-  source("functions/n_patient_per_period.R")
-  source("functions/patient_monthly_enrolment.R")
-  source("functions/patient_nonNegative_DAYSUPP.R")
-  source("functions/setAEDFlag.R")
-  source("functions/aggregate_AED_substancenames.R")
-  source("functions/add_Phew_PhewHighlevel.R")
-  source("functions/disOnt_ICD9_2_MESH.R")
-  
-  ## re-compute missing IXDAYS for all observations
-  newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
-  PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
-  
-  ### Keep only patients within valid time period 
-  nPatObs(PATIENTS_AGE_REGION)
-  PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
-  nPatObs(PATIENTS_AGE_REGION)
-  
-  ## Add Age and Regional Information
-  PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
-  
-  ## only patients with non-negative DAYSUP
-  PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
-  nPatObs(PATIENTS_AGE_REGION)
-  
-  ## set AED flag
-  PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
-  
-  ## adult only (AGE >= 18)
-  PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
-  
-  # only patients treated with AEDs
-  pat.with.aeds       <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% dplyr::select(ENROLID) %>% distinct()
-  PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
-  
-  # return value(s)
-  return(PATIENTS_AGE_REGION)
-}
 
 ###########
 # netezza #

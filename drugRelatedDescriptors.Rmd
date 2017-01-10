@@ -19,6 +19,7 @@ if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
 params <- vector("list")
 params$thres.subst.freq   <- 2
 ```
+
 # script specific functions
 ```{r}
 
@@ -61,7 +62,23 @@ NormalizeStrings <- function(y) sapply(y, function(x) trimws(toupper(as.characte
 # filter patients
 ```{r standardize population, echo=FALSE}
 PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
+
+# normalize medical history by cutoff
 PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
+
+# delete DIAG terms with E or V prefix
+EV <- grep("E|V",PATIENTS_AGE_REGION$DIAG)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION[-EV,]
+
+# add phewas and phewas_hl
+source("functions/add_Phew_PhewHighlevel.R")
+PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+
+# add main-comorbidities
+PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION)
+
+# filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
+PATIENTS_AGE_REGION <- KeepIncidentAndCensored(PATIENTS_AGE_REGION)
 ```
 
 # frequent substances only
@@ -76,8 +93,9 @@ subst.freq          <- SUBSTANCE_FREQUENCY(PATIENTS_AGE_REGION)
 relevant.subst      <- subst.freq %>% filter(freq >= params$thres.subst.freq) %>% dplyr::select(SUBSTANCENAME)
 
 PATIENTS.DRUGS1 <- 
-  PATIENTS_AGE_REGION %>% filter(SUBSTANCENAME %in% relevant.subst$SUBSTANCENAME) %>% 
- dplyr::select(SUBSTANCENAME, PROPRIETARYNAME, PHARMCLS1) %>% 
+  PATIENTS_AGE_REGION %>% 
+  filter(SUBSTANCENAME %in% relevant.subst$SUBSTANCENAME) %>% 
+  dplyr::select(SUBSTANCENAME, PROPRIETARYNAME, PHARMCLS1) %>% 
   distinct()
 
 PATIENTS.DRUGS1 <- as_tibble(apply(PATIENTS.DRUGS1,2,function(x) trimws(toupper(x))))
@@ -453,7 +471,7 @@ drug2uniprot <- rbind(drug2uniprot1.3, setNames(drug2uniprot2.1, names(drug2unip
 library(org.Hs.eg.db)
 columns(org.Hs.eg.db)
 u <- unique(drug2uniprot$UNIPROT.ID)
-u2g <- select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","GO")) %>% dplyr::select(UNIPROT, GO) %>% distinct()
+u2g <- AnnotationDbi::select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","GO")) %>% dplyr::select(UNIPROT, GO) %>% distinct()
 drug2go <- inner_join(drug2uniprot, u2g, by = c("UNIPROT.ID" = "UNIPROT")) %>% dplyr::select(-UNIPROT.ID) %>% distinct()
 drug2go <- drug2go[complete.cases(drug2go),]
 load("~/epilepsie_preprocessing_descrStat/data/gene_ontology/go-basic.obo.RData")
@@ -487,7 +505,7 @@ drug2pathway1 <- drug2pathway1[complete.cases(drug2pathway1),]
 u <- unique(drug2uniprot$UNIPROT.ID)
 
 uniprot2kegg <- 
-  select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","PATH")) %>% 
+ AnnotationDbi::select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","PATH")) %>% 
   dplyr::select(UNIPROT, PATH) %>% distinct() %>% as_tibble()
 
 drug2pathway2 <- 
@@ -509,7 +527,7 @@ library(org.Hs.eg.db)
 columns(org.Hs.eg.db)
 u <- unique(drug2uniprot$UNIPROT.ID)
 uniprot2entrez <- 
-  select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","ENTREZID")) %>%
+  AnnotationDbi::select(org.Hs.eg.db, keys=u, keytype="UNIPROT" ,columns=c("UNIPROT","ENTREZID")) %>%
   dplyr::select(UNIPROT, ENTREZID) %>% distinct()
 
 drug2entrez <- inner_join(drug2uniprot, uniprot2entrez, by = c("UNIPROT.ID" = "UNIPROT")) %>% dplyr::select(-UNIPROT.ID) %>% distinct()
