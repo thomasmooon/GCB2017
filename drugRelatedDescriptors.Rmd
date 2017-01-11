@@ -20,45 +20,6 @@ params <- vector("list")
 params$thres.subst.freq   <- 2
 ```
 
-# script specific functions
-```{r}
-
-####
-parseColByIdx <- function(data, colname,sep=";") {
-  
-  keyIdx  <- which(colnames(data) %in% colname)
-  isEmpty <- data[,keyIdx] == "" & is.na(data[,keyIdx])
-  data    <- data[!isEmpty,]
-  
-  parse         <- data[,keyIdx]
-  parsed.list   <- sapply(parse, function(x) strsplit(x,split = sep))
-  reps          <- sapply(parsed.list,length)
-  
-  parsed        <- unlist(parsed.list)
-  cnames        <- c(colnames(data[,-keyIdx]),colname)
-  
-  row.reps      <- unlist(mapply(rep, 1:length(reps), reps))
-  data.new      <- cbind(data[row.reps, - keyIdx], parsed)
-  colnames(data.new) <- cnames
-  
-  data.new <- sapply(data.new,function(x) as.character(x)) %>% as_tibble() %>% distinct()
-  
-  return(data.new)
-  
-}
-###################
-# check for delimiters ";" and ","
-parseMe <- function(x) {
-  delim <- c(";",",","|")
-  n <- c(sum(grepl(";", x)), sum(grepl(",", x)), sum(grepl("\\|", x)))
-  n.delim <- data.frame(delim,n)
-  return(n.delim)
-  }
-
-##################
-NormalizeStrings <- function(y) sapply(y, function(x) trimws(toupper(as.character(x)))) %>% as_tibble()
-```
-
 # filter patients
 ```{r standardize population, echo=FALSE}
 PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)

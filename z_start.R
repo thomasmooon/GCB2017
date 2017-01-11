@@ -77,6 +77,11 @@ AddMainComorb <- function(PATIENTS_AGE_REGION) {
   return(PATIENTS_AGE_REGION)
 }
 
+
+
+##################
+NormalizeStrings <- function(y) sapply(y, function(x) trimws(toupper(as.character(x)))) %>% as_tibble()
+
 ###############
 # detect number of delimiters
 parseMe <- function(x) {
@@ -107,6 +112,10 @@ Diag_frequency <- function(P) {
 FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
   
   PATIENTS_AGE_REGION <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
+  
+  # correct / complete IXDAYS
+  newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
+  PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
   
   source("functions/n_patient_per_period.R")
   source("functions/patient_monthly_enrolment.R")
@@ -145,22 +154,29 @@ FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
 
 parseColByIdx <- function(data, colname,sep=";") {
   
-  keyIdx  <- which(colnames(data) %in% colname)
-  isEmpty <- data[,keyIdx] == "" & is.na(data[,keyIdx])
-  data    <- data[!isEmpty,]
+  keyIdx    <- which(colnames(data) %in% colname)
+  
+  isEmpty   <- data[,keyIdx] == "" | is.na(data[,keyIdx])
+  otherData <- data[isEmpty,] # +
+  data      <- data[!isEmpty,]
   
   parse         <- data[,keyIdx]
   parsed.list   <- sapply(parse, function(x) strsplit(x,split = sep))
   reps          <- sapply(parsed.list,length)
   
   parsed        <- unlist(parsed.list)
-  cnames        <- c(colnames(data[,-keyIdx]),colname)
+  cnames        <- c(colnames(data[,-keyIdx]),colname) # *
+  
+  # reorder columns of otherData
+  o         <- match(cnames,colnames(otherData))
+  otherData <- otherData[,o]
   
   row.reps      <- unlist(mapply(rep, 1:length(reps), reps))
   data.new      <- cbind(data[row.reps, - keyIdx], parsed)
   colnames(data.new) <- cnames
+  data.new      <- rbind(data.new, otherData) # +
   
-  data.new <- sapply(data.new,function(x) as.character(x)) %>% as_tibble() %>% distinct()
+  data.new <- data.new %>% as_tibble() %>% distinct()
   
   return(data.new)
 }
