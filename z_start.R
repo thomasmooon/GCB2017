@@ -146,6 +146,13 @@ FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
     # add phewas and phewas_hl
   PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
   
+  # add main comorbidities
+  PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION)
+  
+  # Patch ICD9 Code V12.54
+  source("functions/Patch_V12.54.R")
+  PATIENTS_AGE_REGION <- Patch_V12.54(PATIENTS_AGE_REGION)
+  
   # return
   return(PATIENTS_AGE_REGION)
 }
@@ -307,7 +314,6 @@ filter_patient_medHist_follUp <- function(PATIENTS_AGE_REGION, lbound=-1e6, ubou
   load("./output/patDayMinMax.RData")
   patDayMinMax            <- patDayMinMax %>% filter(ixMin <= lbound,ixMax >= ubound) 
   PATIENTS_AGE_REGION     <- inner_join(PATIENTS_AGE_REGION,patDayMinMax %>% dplyr::select(ENROLID),by="ENROLID")
-  cat("Patients left:",n_distinct(PATIENTS_AGE_REGION$ENROLID))
   return(PATIENTS_AGE_REGION)
 }
 

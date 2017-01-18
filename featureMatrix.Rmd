@@ -2,7 +2,7 @@
 title: "feature Matrix adult"
 author: "Thomas Gerlach"
 subtitle: "featureMatrixAdult.Rmd"
-output: html_document
+output: html_notebook
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 ---
 
@@ -360,9 +360,6 @@ MAIN.COMORB.PHEWAS <- left_join(MAIN.COMORB.PHEWAS, ICD9GROUPING , by = "PHEWAS_
 rm(ICD9GROUPING)
 ```
 
-to-do:
-bevor es hier weitergeht muss das Problem betreffend der Grösse der Subpopulationen
-in Abhängigkeit von den Filter- und Parsingoptionen geklärt werden!
 
 Dann klären, wieso nur 31 von 47 möglichen Diagnosen in PAT.FEATMAT wiederzufinden sind!
 Dann klären, wieso nur 4 von 115 möglichen HK's in PAT.FEATMAT wiederzufinden sind!

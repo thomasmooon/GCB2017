@@ -2,12 +2,12 @@
 title: "disease_Descriptors.Rmd"
 subtitle: ""
 author: "Thomas Gerlach"
-date: ""
-output: html_document
+date: "2017 JAN 01"
+output: html_notebook
 ---
 
 # setup
-```{r start, echo=FALSE, include = FALSE}
+```{r, echo=FALSE, include = FALSE}
 rm(list=setdiff(ls(), "TABLE04SAS7BDAT"))
 knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7) # markdown
 source("z_start.R") # initalize netezza DB, load core data
@@ -72,26 +72,22 @@ ParseConcatenatedICD9 <- function(icd9.unparsed) {
 ```{r standardize population, echo=FALSE}
 PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
 
-# normalize medical history by cutoff
-PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
-
-# delete DIAG terms with E or V prefix
-EV <- grep("E|V",PATIENTS_AGE_REGION$DIAG)
-PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION[-EV,]
-
-# add phewas and phewas_hl
-source("functions/add_Phew_PhewHighlevel.R")
-PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+# # delete DIAG terms with E or V prefix
+# EV <- grep("E|V",PATIENTS_AGE_REGION$DIAG)
+# PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION[-EV,]
 
 # add main-comorbidities
 PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION)
 
 # filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
 PATIENTS_AGE_REGION <- KeepIncidentAndCensored(PATIENTS_AGE_REGION)
+
+# normalize medical history by cutoff
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
 ```
 
 ## frequent diagnosis only
-```{r start, echo=FALSE}
+```{r, echo=FALSE}
 PATIENTS_AGE_REGION <- ParseICD9(PATIENTS_AGE_REGION)
 diag.freq <- Diag_frequency(PATIENTS_AGE_REGION)
 relevant.diag <- diag.freq %>% filter(freq >= params$thres.diag.freq) %>% dplyr::select(DIAG)
