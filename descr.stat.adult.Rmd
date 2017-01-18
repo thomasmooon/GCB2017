@@ -1,10 +1,7 @@
 ---
 title: "descriptive statistics of adult (AGE >= 18)"
-output:
-  html_document: default
-  html_notebook: default
-date: "2017 JAN 17"
-subtitle: descr.stat.adult.Rmd
+output: html_notebook
+date: "2017 JAN 18"
 ---
 
 # setup global variables
@@ -112,8 +109,16 @@ PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
 patObsCount$addCount(PATIENTS_AGE_REGION,"AGE >= 18")
 
 # only patients which were treated with AEDs
-pat.with.aeds <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% select(ENROLID) %>% distinct()
-PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
+pat.with.aeds <- 
+  PATIENTS_AGE_REGION %>%
+  filter(isAED == TRUE) %>% 
+  select(ENROLID) %>% 
+  distinct()
+
+PATIENTS_AGE_REGION <- 
+  PATIENTS_AGE_REGION %>% 
+  filter(ENROLID %in% pat.with.aeds$ENROLID)
+
 patObsCount$addCount(PATIENTS_AGE_REGION,"AED treatment")
 
 # patch ICD9 Code V12.54
@@ -164,12 +169,20 @@ PATIENTS_AGE_REGION <- unique(PATIENTS_AGE_REGION)
 
 # ECDF of first occurrence of a main-comorbidity
 ```{r}
-main.comorb.first.ixday <- PATIENTS_AGE_REGION %>% filter(MAIN.COMORB != "") %>% select(ENROLID, IXDAYS, MAIN.COMORB) %>% distinct()
+main.comorb.first.ixday <-
+  PATIENTS_AGE_REGION %>% 
+  filter(MAIN.COMORB != "") %>% 
+  select(ENROLID, IXDAYS, MAIN.COMORB) %>% 
+  distinct()
+
 main.comorb.first.ixday <- aggregate(IXDAYS ~., data = main.comorb.first.ixday , FUN = min)
 glimpse(main.comorb.first.ixday)
 
-ggplot(main.comorb.first.ixday, aes(IXDAYS)) +  facet_wrap( ~ MAIN.COMORB) + stat_ecdf() + 
-  ggtitle(paste("ECDF of first occurrence of diagnosis (PHEWAS) \n aggregated by main-comorbidity"))
+ggplot(main.comorb.first.ixday, aes(IXDAYS)) +  
+  facet_wrap( ~ MAIN.COMORB) +
+  stat_ecdf() + 
+  ggtitle(paste("ECDF of first occurrence of diagnosis (PHEWAS) \n aggregated by main-comorbidity \n blue line = 180 days")) +
+  geom_vline(xintercept = 180, colour = "blue", linetype = "longdash")
 
 ```
 
@@ -179,18 +192,23 @@ ggplot(main.comorb.first.ixday, aes(IXDAYS)) +  facet_wrap( ~ MAIN.COMORB) + sta
 ```{r, warning=FALSE}
 
 # without any main-comorbidity
-x <- PATIENTS_AGE_REGION %>% filter(!is.na(MAIN.COMORB)) %>% select(ENROLID) %>% distinct()
+x <- 
+  PATIENTS_AGE_REGION %>% 
+  filter(!is.na(MAIN.COMORB)) %>% 
+  select(ENROLID) %>%
+  distinct()
+
 patObsCount$addCount(PATIENTS_AGE_REGION %>% filter(!(ENROLID %in% x$ENROLID)),paste("without any main-comorbidity"))
 
 # with main co-morbidities
-x <- main.comorb.first.ixday %>% filter(IXDAYS >= params$incidence.buffer) %>% select(ENROLID) %>% distinct()
+x <- 
+  main.comorb.first.ixday %>% 
+  filter(IXDAYS >= params$incidence.buffer) %>% 
+  select(ENROLID) %>%
+  distinct()
+
 patObsCount$addCount(PATIENTS_AGE_REGION %>% filter(ENROLID %in% x$ENROLID),paste("incident main-comorbidities >= ",params$incidence.buffer, " days"))
-for (m in MAIN.COMORB) {
-  patObsCount$addCount(
-    PATIENTS_AGE_REGION %>% filter(ENROLID %in% x$ENROLID, MAIN.COMORB == m),
-    paste("-",m)
-    )  
-}
+
 
 # n patients per MAIN.COMORB, by PHEWAS_STRING
 ##############################################
@@ -211,7 +229,19 @@ knitr::kable(MAIN.COMORB.PHEWAS)
 
 ### by MAIN.COMORB
 ```{r, echo = FALSE}
-knitr::kable(MAIN.COMORB.PHEWAS %>% group_by(MAIN.COMORB) %>% select(n) %>% tally())
+# count prevalent patients per MC
+prev.allAEDs <- 
+  PATIENTS_AGE_REGION %>% 
+  filter(MAIN.COMORB != "") %>% 
+  select(ENROLID, MAIN.COMORB) %>% 
+  distinct() %>% 
+  group_by(MAIN.COMORB) %>% 
+  tally() %>% 
+  dplyr::rename(n.prevalent = n)
+
+knitr::kable(prev.allAEDs[order(-prev.allAEDs$n.prevalent),])
+
+cat("The sum of patients within a comorbidity is NOT the sum of patients in the PHEWAS_STRING by MAIN.COMORB due to overlaps. This approach leads to an overestimation")
 ```
 
 ## incidence
@@ -222,7 +252,13 @@ buffer.int <- 1:365
 
 # summarised over all patients
 ##############################
-x <- unlist(mapply(function(x) main.comorb.first.ixday %>% filter(IXDAYS >= x) %>% select(ENROLID) %>% distinct() %>% tally(), buffer.int))
+x <- 
+  unlist(
+    mapply(
+      function(x) main.comorb.first.ixday %>% filter(IXDAYS >= x) %>% select(ENROLID) %>% distinct() %>% tally(),
+      buffer.int)
+    )
+
 x <- as.data.frame(cbind(buffer.int, x))
 
 ggplot(x, aes(buffer.int, x)) +
@@ -256,9 +292,19 @@ ggplot(first.ixdays.vs.buffer, aes(buffer.int)) +
   ggtitle("Number of patients with new main-comorbidities at time >= IXDAYS \n by main-comorbidity") +
   xlab("IXDAYS")
 
+mc.inc180 <- 
+  first.ixdays.vs.buffer %>%
+  filter(buffer == 180) %>% 
+  dplyr::select(-buffer) %>%
+  t() 
+
+mc.inc180 <- data.frame(MC = row.names(mc.inc180), n.incident = mc.inc180)
+mc.inc180 <- mc.inc180[order(-mc.inc180$n.incident),]
+row.names(mc.inc180) <- c()
+knitr::kable(mc.inc180 )
 ```
 
-# plot patient frequency by filter criterium
+# patient frequency by filter criterium
 ```{r}
 
 ggplot(gather(patObsCount$value()[-2],"age","n",2:3), aes(x=description,y=n, fill=age, label = n)) +
@@ -364,38 +410,38 @@ ggplot(
 
 ```
 
-# prevalence vs incidence (>= +180 days)
+<!-- # prevalence vs incidence (>= +180 days) -->
 
-* for the top 20 co-morbidities
-```{r}
+<!-- * for the top 20 co-morbidities -->
+<!-- ```{r} -->
 
-top20.cm <- 
-  PATIENTS_AGE_REGION %>%
-  filter(PHEWAS_STRING != "") %>% 
-  select(ENROLID, PHEWAS_STRING) %>%
-  distinct() %>%
-  group_by( PHEWAS_STRING) %>%
-  tally(sort = TRUE) %>%
-  top_n(20, n)
+<!-- top20.cm <-  -->
+<!--   PATIENTS_AGE_REGION %>% -->
+<!--   filter(PHEWAS_STRING != "") %>%  -->
+<!--   select(ENROLID, PHEWAS_STRING) %>% -->
+<!--   distinct() %>% -->
+<!--   group_by( PHEWAS_STRING) %>% -->
+<!--   tally(sort = TRUE) %>% -->
+<!--   top_n(20, n) -->
 
-top20.inc <- 
-  PATIENTS_AGE_REGION %>%
-  filter(PHEWAS_STRING %in% top20.cm$PHEWAS_STRING) %>% 
-  select(ENROLID, PHEWAS_STRING, IXDAYS) %>%
-  distinct() 
-  
-top20.inc <-
-  aggregate(formula = IXDAYS ~ ENROLID + PHEWAS_STRING, data = top20.inc, FUN = min) %>% 
-  filter(IXDAYS >= 180) %>% 
-  group_by(PHEWAS_STRING) %>% 
-  tally(sort = TRUE)
+<!-- top20.inc <-  -->
+<!--   PATIENTS_AGE_REGION %>% -->
+<!--   filter(PHEWAS_STRING %in% top20.cm$PHEWAS_STRING) %>%  -->
+<!--   select(ENROLID, PHEWAS_STRING, IXDAYS) %>% -->
+<!--   distinct()  -->
+
+<!-- top20.inc <- -->
+<!--   aggregate(formula = IXDAYS ~ ENROLID + PHEWAS_STRING, data = top20.inc, FUN = min) %>%  -->
+<!--   filter(IXDAYS >= 180) %>%  -->
+<!--   group_by(PHEWAS_STRING) %>%  -->
+<!--   tally(sort = TRUE) -->
 
 
-knitr::kable(
-  left_join(top20.cm %>% rename(n.prevalence = n),
-          top20.inc %>% rename(n.incidence = n),
-          by = "PHEWAS_STRING") %>% 
-  mutate(perc.incidence = round(n.incidence / n.prevalence,2))
-          )
-```
+<!-- knitr::kable( -->
+<!--   left_join(top20.cm %>% rename(n.prevalence = n), -->
+<!--           top20.inc %>% rename(n.incidence = n), -->
+<!--           by = "PHEWAS_STRING") %>%  -->
+<!--   mutate(perc.incidence = round(n.incidence / n.prevalence,2)) -->
+<!--           ) -->
+<!-- ``` -->
 
