@@ -1,7 +1,7 @@
 ---
 title: "descriptive statistics of adult (AGE >= 18)"
 output: html_notebook
-date: "2017 JAN 18"
+date: "2017 JAN 19"
 ---
 
 # setup global variables
@@ -162,11 +162,6 @@ PATIENTS_AGE_REGION <- unique(PATIENTS_AGE_REGION)
 ```
 
 
-```{r}
-# pdf(file="output/descr.stat.Rmd.pdf")
-```
-
-
 # ECDF of first occurrence of a main-comorbidity
 ```{r}
 main.comorb.first.ixday <-
@@ -176,13 +171,13 @@ main.comorb.first.ixday <-
   distinct()
 
 main.comorb.first.ixday <- aggregate(IXDAYS ~., data = main.comorb.first.ixday , FUN = min)
-glimpse(main.comorb.first.ixday)
 
 ggplot(main.comorb.first.ixday, aes(IXDAYS)) +  
   facet_wrap( ~ MAIN.COMORB) +
   stat_ecdf() + 
-  ggtitle(paste("ECDF of first occurrence of diagnosis (PHEWAS) \n aggregated by main-comorbidity \n blue line = 180 days")) +
-  geom_vline(xintercept = 180, colour = "blue", linetype = "longdash")
+  ggtitle(paste("ECDF of first occurrence of diagnosis (PHEWAS) \n aggregated by main-comorbidity \n blue line = 180 days, red lines = 80%, 90%")) +
+  geom_vline(xintercept = 180, colour = "blue", linetype = "longdash", size = 0.1) +
+  geom_hline(yintercept = c(0.8, 0.9), colour = "red", linetype = "longdash", size=0.1)
 
 ```
 
@@ -241,7 +236,7 @@ prev.allAEDs <-
 
 knitr::kable(prev.allAEDs[order(-prev.allAEDs$n.prevalent),])
 
-cat("The sum of patients within a comorbidity is NOT the sum of patients in the PHEWAS_STRING by MAIN.COMORB due to overlaps. This approach leads to an overestimation")
+cat("The sum of patients within a comorbidity is NOT the sum of patients in the PHEWAS_STRING by MAIN.COMORB due to overlaps.")
 ```
 
 ## incidence
@@ -307,17 +302,14 @@ knitr::kable(mc.inc180 )
 # patient frequency by filter criterium
 ```{r}
 
-ggplot(gather(patObsCount$value()[-2],"age","n",2:3), aes(x=description,y=n, fill=age, label = n)) +
+ggplot(gather(patObsCount$value()[-2],"age","n",2:3), aes(x=reorder(description,n),y=n, fill=age, label = n)) +
   geom_bar(aes(fill=age), position="dodge",stat="identity") +
-  geom_text(aes(label=n), position=position_dodge(0.9), vjust=-1) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  ggtitle("patient frequency by filter criterium and by age")
+  geom_text(aes(label=n), position=position_dodge(0.9), hjust = -0.1) +
+  ggtitle("patient frequency by filter criterium and by age") +
+  coord_flip() +
+  ylim(0,1e6) 
 
 knitr::kable(patObsCount$value())
-```
-
-```{r}
-# dev.off()
 ```
 
 # descriptive stats
@@ -366,7 +358,8 @@ ggplot(
   ) +
   coord_flip() +
   geom_bar(stat="identity") +
-  ggtitle(paste("PHARMCLS1 frequency, top 2x20","\n total pop.-size = ",PATIENTS_AGE_REGION %>% select(ENROLID) %>% distinct() %>% tally() ))
+  ggtitle(paste("PHARMCLS1 frequency, top 2x20","\n total pop.-size = ",PATIENTS_AGE_REGION %>% select(ENROLID) %>% distinct() %>% tally() )) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # SUBSTANCE frequencies
 ggplot(
@@ -387,7 +380,8 @@ ggplot(
       "\nnon-AED vs AED",
       "\n total pop.-size = ",
       PATIENTS_AGE_REGION %>% select(ENROLID) %>% distinct() %>% tally())
-  ) 
+    ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # DIAGNOSIS by PHEWAS_STRING
 ggplot(
@@ -406,7 +400,8 @@ ggplot(
       "PHEWAS frequency, top 20 (each category)",
       "\n total pop.-size = ",
       PATIENTS_AGE_REGION %>% select(ENROLID) %>% distinct() %>% tally())
-  ) 
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ```
 

@@ -2,7 +2,7 @@
 title: "prevalence and incidence of Main-co-morbidities"
 subtitle: "adult (AGE >= 18), patients with incident Main-CM only"
 author: "Thomas Gerlach"
-date: "2017 JAN 18"
+date: "2017 JAN 19"
 output: html_notebook
 ---
 
@@ -54,7 +54,8 @@ ggplot(patPerAED, aes(x=reorder(SUBSTANCENAME,-n), y=n/nPat$n)) +
   ggtitle(paste("AED frequency \nAGE >= 18,",nPat$n,"patients")) + 
   xlab("SUBSTANCENAME") + 
   ylab("% population") +  geom_text(aes(label=n), vjust=0, hjust=-1) +
-  scale_y_continuous(labels = scales::percent)
+  scale_y_continuous(labels = scales::percent) +
+  ylim(0,1)
 
 ```
 

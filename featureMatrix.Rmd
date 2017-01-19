@@ -233,7 +233,7 @@ wrap.getQUARTQTY.s <- function(data,ncores=10) {
 
 start <- proc.time()
 q1$METQTY <- as.numeric(q1$METQTY)
-PAT.FEATMAT.QUARTQTY.m <- wrap.getQUARTQTY.s(q1 %>% select(ENROLID, SUBSTANCENAME, METQTY, START, END) %>% distinct(),10)
+PAT.FEATMAT.QUARTQTY.m <- wrap.getQUARTQTY.s(q1 %>% select(ENROLID, SUBSTANCENAME, METQTY, START, END) %>% distinct(),7)
 stop <- proc.time() - start
 stop[3] / 60 # 3-4 hours
 
