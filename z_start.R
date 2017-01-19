@@ -48,9 +48,10 @@ KeepIncidentAndCensored <- function(PATIENTS_AGE_REGION) {
 
 ####################
 
-AddMainComorb <- function(PATIENTS_AGE_REGION) {
-  # - flag the particular main-comorbidity
+AddMainComorb <- function(PATIENTS_AGE_REGION,cohort="adult") {
   
+  if (cohort=="adult") {
+  # flag the particular main-comorbidity
   # list of PHEWAS_STRINGS with their assignments to co-morbidiets
   MAIN.COMORB <- c("Hypertension","Diabetes","Hyperlipidemia","Anxiety","Migraine","Depression","Stroke.IschemAttack")
   MAIN.COMORB.PHEWAS <- vector("list",length(MAIN.COMORB))
@@ -75,6 +76,34 @@ AddMainComorb <- function(PATIENTS_AGE_REGION) {
   # add main-comorbidity to patients table
   PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
   return(PATIENTS_AGE_REGION)
+  }
+  
+  if (cohort=="children") {
+    MAIN.COMORB <- c("ADHD","Autism","Migraine","Developmental.delays.and.disorders","Anxiety","Depression")
+    MAIN.COMORB.PHEWAS <- vector("list",length(MAIN.COMORB))
+    names(MAIN.COMORB.PHEWAS) <- MAIN.COMORB
+    MAIN.COMORB.PHEWAS$ADHD <- c("Attention deficit hyperactivity disorder")
+    MAIN.COMORB.PHEWAS$Autism <- c("Autism")
+    MAIN.COMORB.PHEWAS$Migraine <- c("Migraine","Migrain with aura")
+    MAIN.COMORB.PHEWAS$Developmental.delays.and.disorders <- c("Develomental delays and disorders", "Lack of normal physiological development")
+    MAIN.COMORB.PHEWAS$Anxiety <- c("Anxiety","Anxiety, phobic and dissociative disorders","Generalized anxiety disorder","Agorophobia, social phobia, and panic disorder")
+    MAIN.COMORB.PHEWAS$Depression <- c("Depression","Major depressive disorder")
+    
+    # comorb-list to df, join PHEWAS frequency
+    MAIN.COMORB.PHEWAS <-
+      data.frame (cbind(
+        MAIN.COMORB = as.character(unlist(mapply(rep, MAIN.COMORB, unlist(lapply( MAIN.COMORB.PHEWAS, length))))),
+        PHEWAS_STRING = as.character(unlist(MAIN.COMORB.PHEWAS))
+      ), row.names = NULL, stringsAsFactors = FALSE)
+    
+    knitr::kable(MAIN.COMORB.PHEWAS)
+    
+    # 2. add main-comorbidity to patients table
+    PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
+    return(PATIENTS_AGE_REGION)
+  }
+  
+  
 }
 
 
@@ -107,9 +136,8 @@ Diag_frequency <- function(P) {
 }
 
 #####################
-
 # standardized filter for patients table
-FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
+FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, cohort = "adult") {
   
   PATIENTS_AGE_REGION <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
   
@@ -133,8 +161,13 @@ FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
   PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
   # Add Age and Regional Information
   PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
+  
   # adult only (AGE >= 18)
-  PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
+  if(cohort == "adult")  { 
+    PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
+  } else if(cohort == "children") {
+    PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE <= 16) %>% distinct()
+  }
   
   # deseparate substancenames
   PATIENTS_AGE_REGION <- parseColByIdx(PATIENTS_AGE_REGION,"SUBSTANCENAME",sep = ";")
@@ -143,15 +176,18 @@ FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT) {
   # only patients which were treated with AEDs
   pat.with.aeds <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% dplyr::select(ENROLID) %>% distinct()
   PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
-    # add phewas and phewas_hl
+  # add phewas and phewas_hl
   PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
   
   # add main comorbidities
-  PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION)
-  
-  # Patch ICD9 Code V12.54
-  source("functions/Patch_V12.54.R")
-  PATIENTS_AGE_REGION <- Patch_V12.54(PATIENTS_AGE_REGION)
+  if(cohort == "adult") {
+    PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "adult")
+    # Patch ICD9 Code V12.54
+    source("functions/Patch_V12.54.R")
+    PATIENTS_AGE_REGION <- Patch_V12.54(PATIENTS_AGE_REGION)
+  } else if (cohort == "children") {
+    PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "children")
+  }
   
   # return
   return(PATIENTS_AGE_REGION)

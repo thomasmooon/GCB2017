@@ -1,6 +1,6 @@
 ---
 title: "prevalence and incidence of Main-co-morbidities"
-subtitle: "adult (AGE >= 18), patients with incident Main-CM only"
+subtitle: "children (AGE <= 16), patients with incident Main-CM only"
 author: "Thomas Gerlach"
 date: "2017 JAN 19"
 output: html_notebook
@@ -10,26 +10,24 @@ output: html_notebook
 ```{r setup, include=FALSE, echo = FALSE }
 # set knitr defaults
 rm(list=setdiff(ls(),"TABLE04SAS7BDAT"))
-knitr::opts_chunk$set(echo = TRUE, fig.width=10, fig.height=7)
+knitr::opts_chunk$set(echo = TRUE, fig.width=20, fig.height=15)
 source("z_start.R") # initalize netezza DB, load core data
 
 if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
 PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
-PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT, cohort = "children")
 # # aggregate AED SUBSTANCENAME's
 PATIENTS_AGE_REGION <- aggregate_AED_substancenames(PATIENTS_AGE_REGION)
 ```
   
 #  global variables
-```{r}
+```{r, include = FALSE}
 # number of patients
 nPat         <- PATIENTS_AGE_REGION %>% select(ENROLID) %>% distinct() %>% tally()
 ```
 
-
 # barplot: number of patients per AED:
 ```{r}
-
 patPerAED <-
   PATIENTS_AGE_REGION %>% 
   filter(isAED == TRUE) %>% 
@@ -301,6 +299,8 @@ prev.allAEDs <-
   tally() %>% 
   dplyr::rename(n.prevalent = n)
 
+if(dim(prev.allAEDs)[1] > 0) {
+
 # count incident patients by MC
 inc.allAEDs <- 
   aggregate(
@@ -328,6 +328,8 @@ row.names(prev.vs.inc) <- c()
 AED <- paste(AED,"\n",length(ENROLID.subset$ENROLID),"patients")
 prev.vs.inc <- cbind(AED, prev.vs.inc)
 return(prev.vs.inc)
+} else return(NULL)
+
 }
 ```
 
@@ -356,7 +358,7 @@ ggplot(prev.vs.inc.byAED, aes(x = MAIN.COMORB, y=percent.incident)) +
   ylab("% population") +
   guides(fill=guide_legend(ncol=1)) +
   geom_text(aes(label=paste(percent.incident*100,"% =",n.incident,"/",n.prevalent)), hjust=-0) +
-  ylim(0,0.75) +
+  ylim(0,1.4) +
   coord_flip()
 
 
@@ -408,7 +410,7 @@ ggplot(prev.vs.inc.byAED.top10, aes(x = MAIN.COMORB, y=percent.incident, fill=ex
   ggtitle("top-10 main-comorbidities incidence rates by AED") +
   xlab("main-comorbidity") + ylab("% population") +
   guides(fill=guide_legend(ncol=1)) +
-  ylim(0,0.75) +
+  ylim(0,1) +
   geom_text(aes(label=paste(percent.incident*100,"% =",n.incident,"/",n.prevalent)), hjust=-0.1) +
   coord_flip()
 ```

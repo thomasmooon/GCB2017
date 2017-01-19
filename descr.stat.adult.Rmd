@@ -6,6 +6,13 @@ date: "2017 JAN 19"
 
 # setup global variables
 ```{r, echo = FALSE, include = FALSE}
+rm(list=setdiff(ls(),"TABLE04SAS7BDAT"))
+knitr::opts_chunk$set(
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 7
+  )
+
 source("z_start.R") # initalize netezza DB, load core data
 
 params <- vector("list")
@@ -19,17 +26,6 @@ params$EPILEPSY <-
   "Generalized convulsive epilepsy"
   )
 
-```  
- 
-# setup
-```{r, echo = FALSE, include=FALSE}
-knitr::opts_chunk$set(
-  echo = FALSE,
-  warning = FALSE,
-  fig.width = 10,
-  fig.height = 7
-  )
-
 if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
 
 PATIENTS_AGE_REGION <- 
@@ -39,14 +35,9 @@ PATIENTS_AGE_REGION <-
 newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
 PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
 rm(newIXDAYS)
-
-```
+```  
 
 # filter PATIENTS 
-* AGE >= 18
-* 2y MH
-* AED treatment
-* non-negative DAYSUPP
 
 ```{r, include = FALSE}
 
@@ -133,8 +124,6 @@ PATIENTS_AGE_REGION <- unique(PATIENTS_AGE_REGION)
 ```
 
 # get PHEWAS_STRINGS for MAIN.COMORB Strings
-1. matching table: main-comorbidity <-> PHEWAS_STRING
-2. add main-comorbidity to patients table
 ```{r}
 # list of PHEWAS_STRINGS with their assignments to co-morbidiets
   MAIN.COMORB <- c("Hypertension","Diabetes","Hyperlipidemia","Anxiety","Migraine","Depression","Stroke.IschemAttack")
@@ -157,8 +146,8 @@ PATIENTS_AGE_REGION <- unique(PATIENTS_AGE_REGION)
   
   knitr::kable(MAIN.COMORB.PHEWAS)
   
-  # add main-comorbidity to patients table
-  PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
+  # # add main-comorbidity to patients table
+  # PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
 ```
 
 
@@ -202,7 +191,30 @@ x <-
   select(ENROLID) %>%
   distinct()
 
-patObsCount$addCount(PATIENTS_AGE_REGION %>% filter(ENROLID %in% x$ENROLID),paste("incident main-comorbidities >= ",params$incidence.buffer, " days"))
+patObsCount$addCount(
+  PATIENTS_AGE_REGION %>% filter(ENROLID %in% x$ENROLID),
+  paste(
+  "incident main-comorbidities >= ",
+  params$incidence.buffer,
+  " days"
+  )
+  )
+
+## by each main-comorbidity
+main.comorb.first.ixday.inc <- main.comorb.first.ixday %>% filter(IXDAYS >= 180) %>% distinct()
+for (m in MAIN.COMORB) {
+  m.enrolids <-
+    main.comorb.first.ixday.inc %>%
+    filter(MAIN.COMORB == m) %>% 
+    dplyr::select(ENROLID) %>% 
+    distinct()
+  m.enrolids <- m.enrolids$ENROLID
+  
+  patObsCount$addCount(
+  PATIENTS_AGE_REGION %>% filter(ENROLID %in% m.enrolids),
+  paste("-",m)
+  )
+}
 
 
 # n patients per MAIN.COMORB, by PHEWAS_STRING
@@ -312,6 +324,7 @@ ggplot(gather(patObsCount$value()[-2],"age","n",2:3), aes(x=reorder(description,
 knitr::kable(patObsCount$value())
 ```
 
+
 # descriptive stats
 * age histogram
 * AED histogram
@@ -404,39 +417,4 @@ ggplot(
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 ```
-
-<!-- # prevalence vs incidence (>= +180 days) -->
-
-<!-- * for the top 20 co-morbidities -->
-<!-- ```{r} -->
-
-<!-- top20.cm <-  -->
-<!--   PATIENTS_AGE_REGION %>% -->
-<!--   filter(PHEWAS_STRING != "") %>%  -->
-<!--   select(ENROLID, PHEWAS_STRING) %>% -->
-<!--   distinct() %>% -->
-<!--   group_by( PHEWAS_STRING) %>% -->
-<!--   tally(sort = TRUE) %>% -->
-<!--   top_n(20, n) -->
-
-<!-- top20.inc <-  -->
-<!--   PATIENTS_AGE_REGION %>% -->
-<!--   filter(PHEWAS_STRING %in% top20.cm$PHEWAS_STRING) %>%  -->
-<!--   select(ENROLID, PHEWAS_STRING, IXDAYS) %>% -->
-<!--   distinct()  -->
-
-<!-- top20.inc <- -->
-<!--   aggregate(formula = IXDAYS ~ ENROLID + PHEWAS_STRING, data = top20.inc, FUN = min) %>%  -->
-<!--   filter(IXDAYS >= 180) %>%  -->
-<!--   group_by(PHEWAS_STRING) %>%  -->
-<!--   tally(sort = TRUE) -->
-
-
-<!-- knitr::kable( -->
-<!--   left_join(top20.cm %>% rename(n.prevalence = n), -->
-<!--           top20.inc %>% rename(n.incidence = n), -->
-<!--           by = "PHEWAS_STRING") %>%  -->
-<!--   mutate(perc.incidence = round(n.incidence / n.prevalence,2)) -->
-<!--           ) -->
-<!-- ``` -->
 
