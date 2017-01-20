@@ -1,0 +1,250 @@
+---
+title: "treatment transitions"
+subtitle: ""
+author: "Thomas Gerlach"
+output: html_notebook
+date: "2017 JAN 20"
+---
+
+# setup
+```{r setup, include=FALSE, echo = FALSE }
+# set knitr defaults
+rm(list=setdiff(ls(),"TABLE04SAS7BDAT"))
+knitr::opts_chunk$set(echo = TRUE, fig.width=20, fig.height=10)
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
+```
+
+# TreatmentTransition() function
+```{r}
+TreatmentTransition <- function(obs,plotTitle="") {
+  
+  obs$SUBSTANCENAME <- as.character(obs$SUBSTANCENAME)
+  
+  # sort
+  obs       <- obs[order(obs$ENROLID,obs$IXDAYS,obs$SUBSTANCENAME),]
+  
+  # define filters ####
+  #####################
+  
+  obs$prev_ENROL <- c("")
+  obs$prev_ENROL[2:(nrow(obs))]    <- obs$ENROLID[1:(nrow(obs)-1)]
+  
+  obs$current_ENROL <- obs$ENROLID
+  obs$next_ENROL <- ""
+  obs$next_ENROL[1:(nrow(obs)-1)]    <- obs$ENROLID[2:nrow(obs)]
+  
+  obs$current_SUBST <- obs$SUBSTANCENAME
+  obs$next_SUBST <- ""
+  obs$next_SUBST[1:(nrow(obs)-1)]    <- obs$SUBSTANCENAME[2:nrow(obs)]
+  
+  # flag duplicates within patient
+  obs$duplicate <- (obs$current_ENROL == obs$next_ENROL) & (obs$current_SUBST == obs$next_SUBST)
+  
+  # flag first entry of a patients observation
+  obs$firstObs <- obs$current_ENROL != obs$prev_ENROL
+  obs$firstObs[1] <- TRUE
+  
+  # flag last entry of a patients observation
+  obs$lastObs <- obs$current_ENROL != obs$next_ENROL
+  
+  # drop rows by filter criterium ####
+  ####################################
+  
+  # drop rows where obs$firstObs and obs$lastObs both are true 
+  # these are patients with only 1 treatment event -> can't have a transition
+  obs <- obs %>% filter(!(firstObs & lastObs))
+  
+  # drop last observation, because obs$next_SUBST point to the next ENROLID
+  obs <- obs %>% filter(!(lastObs))
+  
+  # drop duplicates, if it isn't the first observation
+  obs <- obs %>% filter(!(duplicate & !firstObs))
+  
+  # compute + plot transition matrix ####
+  #######################################
+  
+  # absolute
+  tm <- as.data.frame.matrix(table(obs$current_SUBST, obs$next_SUBST))
+  
+  ## attach dummy variables for missing AEDs for standardization purposes 
+  ## (to enable matrix distance computations)
+  AEDs.all <- c("DIVALPROEX SODIUM", "GABAPENTIN", "LEVETIRACETAM", "OXCARBAZEPINE", "PRIMIDONE",
+                "LAMOTRIGINE", "TOPIRAMATE", "PHENYTOIN SODIUM", "LACOSAMIDE", "ZONISAMIDE",
+                "PHENYTOIN", "VALPROIC ACID", "METHSUXIMIDE", "ETHOSUXIMIDE", "TIAGABINE HYDROCHLORIDE",
+                "FELBAMATE", "VIGABATRIN", "ESLICARBAZEPINE ACETATE", "GABAPENTIN ENACARBIL", "FOSPHENYTOIN SODIUM",
+                "VALPROATE SODIUM", "ETHOTOIN")
+  
+  
+  # add new rows
+  AED.missing.rows <- setdiff(AEDs.all,row.names(tm))
+  new.rows    <- data.frame(matrix(0,length(AED.missing.rows),ncol(tm)))
+  colnames(new.rows) <- colnames(tm)
+  row.names(new.rows) <- AED.missing.rows
+  tm <- rbind(tm,new.rows)
+  
+  # add new columns
+  AED.missing.cols <- setdiff(AEDs.all,colnames(tm))
+  new.cols    <- data.frame(matrix(0,nrow(tm),length(AED.missing.cols)))
+  colnames(new.cols) <- AED.missing.cols
+  row.names(new.cols) <- row.names(tm)
+  tm <- cbind(tm,new.cols)
+  
+  # order by names
+  tm <- tm[order(row.names(tm)),]
+  tm <- tm[,order(colnames(tm))]
+  
+  # some annotation
+  row.names(tm) <- paste("current", row.names(tm))
+  colnames(tm)  <- paste("next",colnames(tm))
+  
+  # add row/col-sums to row/col-names
+  row.names(tm) <- paste(row.names(tm),"n =",rowSums(tm))
+  colnames(tm) <- paste(colnames(tm),"n =",colSums(tm))
+  
+  # %
+  tm <- apply(tm,1, FUN = function(x) round(x/sum(x),2)) %>% as.data.frame() %>% t()
+  tm[is.na(tm)] <- 0
+  
+  # https://cran.r-project.org/web/packages/corrplot/vignettes/corrplot-intro.html
+  corrplot::corrplot(
+    tm,
+    is.corr = FALSE,
+    tl.col = 1,
+    method = "circle",
+    outline = T, tl.cex = 1,
+    tl.srt = 35,
+    title = plotTitle,
+    mar=c(0,0,1,0)
+  )
+  
+  return(tm)
+}
+
+```
+
+
+# compute transitions
+
+## children
+
+### all children
+```{r}
+
+children <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT, cohort = "children")
+
+children.all <- 
+  children %>% 
+  filter(SUBSTANCENAME != "", isAED == TRUE) %>% 
+  select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
+  distinct()
+
+children.all.tm <- TreatmentTransition(children.all,paste("children, n=",n_distinct(children.all$ENROLID)))
+```
+
+### children with main-comorbidities
+```{r}
+children.cm          <- unique(children$MAIN.COMORB)
+children.cm          <- children.cm[!is.na(children.cm)]
+children.cm.l        <- vector("list", length = length(children.cm))
+names(children.cm.l) <- children.cm
+
+for(m in 1:length(children.cm)) {
+  mc          <- children.cm[m]
+  tmp.enrolid <- children %>% filter(MAIN.COMORB == mc) %>% select(ENROLID) %>% distinct()
+  
+  children.tmp <- 
+    children %>% 
+    filter(SUBSTANCENAME != "", isAED == TRUE) %>% 
+    filter(ENROLID %in% tmp.enrolid$ENROLID) %>% 
+    select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
+    distinct()
+  
+  tmp.n <- n_distinct(children.tmp$ENROLID)
+  
+  children.cm.l[[m]] <- TreatmentTransition(children.tmp,paste("children, ",mc,", n=",tmp.n))
+}
+```
+
+#### children distance(x,y), whereas x,y element of {transition main-comorbidities}
+```{r}
+children.cm.dist <- data.frame(matrix(0,length(children.cm),length(children.cm)))
+row.names(children.cm.dist) <- colnames(children.cm.dist) <- children.cm
+
+for(m in 1:length(children.cm)) {
+for(n in 1:length(children.cm)) {
+  children.cm.dist[m,n] <- norm(children.cm.l[[m]] - children.cm.l[[n]], type = "F")
+  }
+}
+
+# clustered heatmap
+heatmap.2(
+  data.matrix(children.cm.dist),
+  col=bluered(50),
+  margin = c(20,20), 
+  srtCol = 35,
+  main = paste("Frobenius distance of transition matrices \n children")   )
+
+```
+
+
+
+## adult
+
+### all adult
+```{r}
+
+adult <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT, cohort = "adult")
+
+adult.all <- 
+  adult %>% 
+  filter(SUBSTANCENAME != "", isAED == TRUE) %>% 
+  select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
+  distinct()
+
+adult.all.tm <- TreatmentTransition(adult.all,paste("adult, n=",n_distinct(adult.all$ENROLID)))
+```
+### adult with main-comorbidities
+```{r}
+adult.cm          <- unique(adult$MAIN.COMORB)
+adult.cm          <- adult.cm[!is.na(adult.cm) & adult.cm != ""]
+adult.cm.l        <- vector("list", length = length(adult.cm))
+names(adult.cm.l) <- adult.cm
+
+for(m in 1:length(adult.cm)) {
+  mc          <- adult.cm[m]
+  tmp.enrolid <- adult %>% filter(MAIN.COMORB == mc) %>% select(ENROLID) %>% distinct()
+  
+  adult.tmp <- 
+    adult %>% 
+    filter(SUBSTANCENAME != "", isAED == TRUE) %>% 
+    filter(ENROLID %in% tmp.enrolid$ENROLID) %>% 
+    select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
+    distinct()
+  
+  tmp.n <- n_distinct(adult.tmp$ENROLID)
+  
+  adult.cm.l[[m]] <- TreatmentTransition(adult.tmp,paste("adult, ",mc,", n=",tmp.n))
+}
+```
+
+#### adult distance(x,y), whereas x,y element of {transition main-comorbidities}
+```{r}
+adult.cm.dist <- data.frame(matrix(0,length(adult.cm),length(adult.cm)))
+row.names(adult.cm.dist) <- colnames(adult.cm.dist) <- adult.cm
+
+for(m in 1:length(adult.cm)) {
+  for(n in 1:length(adult.cm)) {
+    adult.cm.dist[m,n] <- norm(adult.cm.l[[m]] - adult.cm.l[[n]], type = "F")
+  }
+}
+
+# clustered heatmap
+heatmap.2(
+  data.matrix(adult.cm.dist),
+  col=bluered(50),
+  margin = c(20,20), 
+  srtCol = 35,
+  main = paste("Frobenius distance of transition matrices \n adult"))
+
+```
