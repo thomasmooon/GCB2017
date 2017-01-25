@@ -1,0 +1,323 @@
+---
+title: "treatment transitions"
+subtitle: "prevalent"
+author: "Thomas Gerlach"
+output: html_notebook
+date: "2017 JAN 25"
+---
+
+# setup
+```{r setup, include=FALSE, echo = FALSE }
+# set knitr defaults
+rm(list=setdiff(ls(),"TABLE04SAS7BDAT.sparse"))
+knitr::opts_chunk$set(echo = TRUE, fig.width=10, fig.height=10)
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04SAS7BDAT.sparse")) load("./data/TABLE04SAS7BDAT.sparse.RData")
+par(cex.main=0.75)
+```
+
+
+# support functions
+## TreatmentTransition() function
+```{r}
+TreatmentTransition <- function(obs,plotTitle="", nCutoff=0, withDuplicates = FALSE) {
+  
+  # nCutoff: Plot only rows or cols with rowsum or colsum >= nCutoff
+
+obs$SUBSTANCENAME <- as.character(obs$SUBSTANCENAME)
+
+# sort
+obs       <- obs[order(obs$ENROLID,obs$IXDAYS,obs$SUBSTANCENAME),]
+
+# define filters ####
+#####################
+
+obs$prev_ENROL <- c("")
+obs$prev_ENROL[2:(nrow(obs))]    <- obs$ENROLID[1:(nrow(obs)-1)]
+
+obs$current_ENROL <- obs$ENROLID
+obs$next_ENROL <- ""
+obs$next_ENROL[1:(nrow(obs)-1)]    <- obs$ENROLID[2:nrow(obs)]
+
+obs$current_SUBST <- obs$SUBSTANCENAME
+obs$next_SUBST <- ""
+obs$next_SUBST[1:(nrow(obs)-1)]    <- obs$SUBSTANCENAME[2:nrow(obs)]
+
+# flag duplicates within patient
+obs$duplicate <- (obs$current_ENROL == obs$next_ENROL) & (obs$current_SUBST == obs$next_SUBST)
+
+# flag first entry of a patients observation
+obs$firstObs <- obs$current_ENROL != obs$prev_ENROL
+obs$firstObs[1] <- TRUE
+
+# flag last entry of a patients observation
+obs$lastObs <- obs$current_ENROL != obs$next_ENROL
+
+# drop rows by filter criterium ####
+####################################
+
+# drop rows where obs$firstObs and obs$lastObs both are true 
+# these are patients with only 1 treatment event -> can't have a transition
+obs <- obs %>% filter(!(firstObs & lastObs))
+
+# drop last observation, because obs$next_SUBST point to the next ENROLID
+obs <- obs %>% filter(!(lastObs))
+
+# drop duplicates, if it isn't the first observation
+if(!withDuplicates)
+  obs <- obs %>% filter(!duplicate)
+
+# compute + plot transition matrix ####
+#######################################
+
+# absolute
+tm <- as.data.frame.matrix(table(obs$current_SUBST, obs$next_SUBST))
+
+## attach dummy variables for missing AEDs for standardization purposes 
+## (to enable matrix distance computations)
+AEDs.all <- c("DIVALPROEX SODIUM", "GABAPENTIN", "LEVETIRACETAM", "OXCARBAZEPINE", "PRIMIDONE",
+              "LAMOTRIGINE", "TOPIRAMATE", "PHENYTOIN SODIUM", "LACOSAMIDE", "ZONISAMIDE",
+              "PHENYTOIN", "VALPROIC ACID", "METHSUXIMIDE", "ETHOSUXIMIDE", "TIAGABINE HYDROCHLORIDE",
+              "FELBAMATE", "VIGABATRIN", "ESLICARBAZEPINE ACETATE", "GABAPENTIN ENACARBIL", "FOSPHENYTOIN SODIUM",
+              "VALPROATE SODIUM", "ETHOTOIN")
+
+
+# add new rows
+AED.missing.rows <- setdiff(AEDs.all,row.names(tm))
+new.rows    <- data.frame(matrix(0,length(AED.missing.rows),ncol(tm)))
+colnames(new.rows) <- colnames(tm)
+row.names(new.rows) <- AED.missing.rows
+tm <- rbind(tm,new.rows)
+
+# add new columns
+AED.missing.cols <- setdiff(AEDs.all,colnames(tm))
+new.cols    <- data.frame(matrix(0,nrow(tm),length(AED.missing.cols)))
+colnames(new.cols) <- AED.missing.cols
+row.names(new.cols) <- row.names(tm)
+tm <- cbind(tm,new.cols)
+
+# order by names
+tm <- tm[order(row.names(tm)),]
+tm <- tm[,order(colnames(tm))]
+
+# some annotation
+row.names(tm) <- paste("current", row.names(tm))
+colnames(tm)  <- paste("next",colnames(tm))
+
+# add row/col-sums to row/col-names
+row.names(tm) <- paste(row.names(tm),"n =",rowSums(tm))
+colnames(tm) <- paste(colnames(tm),"n =",colSums(tm))
+
+keep.rows <- rowSums(tm) >= nCutoff
+keep.cols <- colSums(tm) >= nCutoff
+
+# %
+tm <- apply(tm,1, FUN = function(x) round(x/sum(x),2)) %>% as.data.frame() %>% t()
+tm[is.na(tm)] <- 0
+
+
+# https://cran.r-project.org/web/packages/corrplot/vignettes/corrplot-intro.html
+corrplot::corrplot(
+  tm[keep.rows, keep.cols],
+  is.corr = FALSE,
+  tl.col = 1,
+  method = "circle",
+  outline = T, 
+  tl.cex = 0.75,
+  tl.srt = 45,
+  title = plotTitle, 
+  mar=c(0,0,1,0)
+)
+  
+  return(tm)
+}
+
+```
+
+
+# compute transitions
+
+## children
+
+### all children.AEDtreatment
+```{r}
+
+children.prevalent <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT.sparse, sparse = T, cohort = "children")
+
+children.prevalent.all <- 
+  children.prevalent %>% 
+  filter(SUBSTANCENAME != "", isAED == TRUE) %>% 
+  select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
+  distinct()
+
+nCutoff <- 10
+title <- paste("children.AEDtreatment,","n=",n_distinct(children.prevalent.all$ENROLID),", rowSum and colSum >=",nCutoff)
+children.prevalent.all.tm <-  TreatmentTransition(children.prevalent.all,title,nCutoff = nCutoff)
+
+```
+
+### children.prevalent with main-comorbidities
+```{r}
+children.prevalent.cm          <- unique(children.prevalent$MAIN.COMORB)
+children.prevalent.cm          <- children.prevalent.cm[!is.na(children.prevalent.cm)]
+children.prevalent.cm.l        <- vector("list", length = length(children.prevalent.cm))
+names(children.prevalent.cm.l) <- children.prevalent.cm
+
+for(m in 1:length(children.prevalent.cm)) {
+  mc          <- children.prevalent.cm[m]
+  tmp.enrolid <- children.prevalent %>% filter(MAIN.COMORB == mc) %>% select(ENROLID) %>% distinct()
+  
+  children.prevalent.tmp <- 
+    children.prevalent %>% 
+    filter(SUBSTANCENAME != "", isAED == TRUE) %>% 
+    filter(ENROLID %in% tmp.enrolid$ENROLID) %>% 
+    select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
+    distinct()
+  
+  tmp.n <- n_distinct(children.prevalent.tmp$ENROLID)
+  
+  title <-paste("children.prevalent, ",mc,", n=",tmp.n,", rowSum and colSum >=",nCutoff)
+  children.prevalent.cm.l[[m]] <- TreatmentTransition(children.prevalent.tmp, title, nCutoff = nCutoff)
+}
+```
+
+#### children.prevalent distance(x,y), whereas x,y element of {transition main-comorbidities}
+
+##### Frobenius distance
+```{r, fig.width = 10, fig.height = 10}
+children.prevalent.cm.dist <- data.frame(matrix(0,length(children.prevalent.cm),length(children.prevalent.cm)))
+row.names(children.prevalent.cm.dist) <- colnames(children.prevalent.cm.dist) <- children.prevalent.cm
+
+for(m in 1:length(children.prevalent.cm)) {
+for(n in 1:length(children.prevalent.cm)) {
+  children.prevalent.cm.dist[m,n] <- norm(children.prevalent.cm.l[[m]] - children.prevalent.cm.l[[n]], type = "F")
+  }
+}
+
+# clustered heatmap
+par(cex.main=0.5)
+heatmap.2(
+  data.matrix(children.prevalent.cm.dist),
+  col=bluered(50),
+  margin = c(20,20), 
+  srtCol = 35, 
+  hclustfun =  function(x) hclust(x,method = "average"),
+  cexRow = 0.75, cexCol = 0.75,
+  main = paste("Frobenius distance of transition matrices \n children.prevalent \n average linkage")   )
+
+```
+
+##### p-Norm, p=1
+```{r, fig.width = 10, fig.height = 10}
+children.prevalent.cm.dist <- data.frame(matrix(0,length(children.prevalent.cm),length(children.prevalent.cm)))
+row.names(children.prevalent.cm.dist) <- colnames(children.prevalent.cm.dist) <- children.prevalent.cm
+
+for(m in 1:length(children.prevalent.cm)) {
+for(n in 1:length(children.prevalent.cm)) {
+  children.prevalent.cm.dist[m,n] <- sum(abs(children.prevalent.cm.l[[m]] - children.prevalent.cm.l[[n]]))
+  }
+}
+
+# clustered heatmap
+par(cex.main=0.5)
+heatmap.2(
+  data.matrix(children.prevalent.cm.dist),
+  col=bluered(50),
+  margin = c(20,20), 
+  srtCol = 35, 
+  hclustfun =  function(x) hclust(x,method = "average"),
+  cexRow = 0.75, cexCol = 0.75,
+  main = paste("p1-Norm-distance  of transition matrices \n children.prevalent \n average linkage")   )
+
+```
+
+## adult
+
+### all adult.AEDtreatment
+```{r}
+
+adult.prevalent <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT.sparse, sparse = T, cohort = "adult")
+
+adult.prevalent.all <- 
+  adult.prevalent %>% 
+  filter(SUBSTANCENAME != "", isAED == TRUE) %>% 
+  select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
+  distinct()
+
+title <- paste("adult.AEDtreatment, n=",n_distinct(adult.prevalent.all$ENROLID),", rowSum and colSum >=",nCutoff)
+adult.prevalent.all.tm <- TreatmentTransition(adult.prevalent.all,title,nCutoff = nCutoff)
+```
+### adult.prevalent with main-comorbidities
+```{r}
+adult.prevalent.cm          <- unique(adult.prevalent$MAIN.COMORB)
+adult.prevalent.cm          <- adult.prevalent.cm[!is.na(adult.prevalent.cm) & adult.prevalent.cm != ""]
+adult.prevalent.cm.l        <- vector("list", length = length(adult.prevalent.cm))
+names(adult.prevalent.cm.l) <- adult.prevalent.cm
+
+for(m in 1:length(adult.prevalent.cm)) {
+  mc          <- adult.prevalent.cm[m]
+  tmp.enrolid <- adult.prevalent %>% filter(MAIN.COMORB == mc) %>% select(ENROLID) %>% distinct()
+  
+  adult.prevalent.tmp <- 
+    adult.prevalent %>% 
+    filter(SUBSTANCENAME != "", isAED == TRUE) %>% 
+    filter(ENROLID %in% tmp.enrolid$ENROLID) %>% 
+    select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
+    distinct()
+  
+  tmp.n <- n_distinct(adult.prevalent.tmp$ENROLID)
+  
+  title <- paste("adult.prevalent, ",mc,", n=",tmp.n,", rowSum and colSum >=",nCutoff)
+  adult.prevalent.cm.l[[m]] <- TreatmentTransition(adult.prevalent.tmp,title, nCutoff = nCutoff)
+}
+```
+
+#### adult.prevalent distance(x,y), whereas x,y element of {transition main-comorbidities}
+
+##### Frobenius-distance
+```{r, fig.width=10, fig.height=10}
+adult.prevalent.cm.dist <- data.frame(matrix(0,length(adult.prevalent.cm),length(adult.prevalent.cm)))
+row.names(adult.prevalent.cm.dist) <- colnames(adult.prevalent.cm.dist) <- adult.prevalent.cm
+
+for(m in 1:length(adult.prevalent.cm)) {
+  for(n in 1:length(adult.prevalent.cm)) {
+    adult.prevalent.cm.dist[m,n] <- norm(adult.prevalent.cm.l[[m]] - adult.prevalent.cm.l[[n]], type = "F")
+  }
+}
+
+# clustered heatmap
+par(cex.main=0.5)
+heatmap.2(
+  data.matrix(adult.prevalent.cm.dist),
+  col=bluered(50),
+  margin = c(5,5), 
+  srtCol = 35, 
+  hclustfun =  function(x) hclust(x,method = "average"),
+  cexRow = 0.75, cexCol = 0.75,
+  main = paste("Frobenius distance of transition matrices \n adult.prevalent"))
+
+```
+
+##### p-Norm, p=1
+```{r, fig.width=10, fig.height=10}
+adult.prevalent.cm.dist <- data.frame(matrix(0,length(adult.prevalent.cm),length(adult.prevalent.cm)))
+row.names(adult.prevalent.cm.dist) <- colnames(adult.prevalent.cm.dist) <- adult.prevalent.cm
+
+for(m in 1:length(adult.prevalent.cm)) {
+  for(n in 1:length(adult.prevalent.cm)) {
+    adult.prevalent.cm.dist[m,n] <- sum(abs(adult.prevalent.cm.l[[m]] - adult.prevalent.cm.l[[n]]))
+  }
+}
+
+# clustered heatmap
+par(cex.main=0.5)
+heatmap.2(
+  data.matrix(adult.prevalent.cm.dist),
+  col=bluered(50),
+  margin = c(5,5), 
+  srtCol = 35, 
+  hclustfun =  function(x) hclust(x,method = "average"),
+  cexRow = 0.75, cexCol = 0.75,
+  main = paste("p1-Norm-distance of transition matrices \n adult.prevalent"))
+
+```

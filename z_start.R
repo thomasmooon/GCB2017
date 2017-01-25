@@ -137,9 +137,10 @@ Diag_frequency <- function(P) {
 
 #####################
 # standardized filter for patients table
-FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, cohort = "adult") {
+FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, sparse = FALSE, cohort = "adult") {
   
-  PATIENTS_AGE_REGION <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
+  if (!sparse) PATIENTS_AGE_REGION <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
+  if (sparse) PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
   
   # correct / complete IXDAYS
   newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
