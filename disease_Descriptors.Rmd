@@ -76,9 +76,6 @@ PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
 # EV <- grep("E|V",PATIENTS_AGE_REGION$DIAG)
 # PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION[-EV,]
 
-# add main-comorbidities
-PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION)
-
 # filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
 PATIENTS_AGE_REGION <- KeepIncidentAndCensored(PATIENTS_AGE_REGION)
 
@@ -93,6 +90,19 @@ diag.freq <- Diag_frequency(PATIENTS_AGE_REGION)
 relevant.diag <- diag.freq %>% filter(freq >= params$thres.diag.freq) %>% dplyr::select(DIAG)
 ```
 
+### add diagnosis which are related to main-comorbidities
+```{r}
+DIAG.MC <-
+  PATIENTS_AGE_REGION %>% 
+  filter(!is.na(MAIN.COMORB), DIAG != "") %>%
+  select(DIAG) %>%
+  distinct()
+
+relevant.diag <- unique(c(relevant.diag$DIAG, DIAG.MC$DIAG))
+```
+
+
+
 # load + preprocess matching resources
 Preprocessing:
 * Normalize Strings
@@ -104,7 +114,7 @@ ICD9GROUPING <- tbl(src, "REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "") %>% co
 ICD9GROUPING <- NormalizeStrings(ICD9GROUPING)
 
 # filter by relevant diagnosis
-ICD9GROUPING <- ICD9GROUPING %>% filter(ICD9 %in% relevant.diag$DIAG)
+ICD9GROUPING <- ICD9GROUPING %>% filter(ICD9 %in% relevant.diag)
 ```
 
 ## MESH2ICD9
@@ -128,7 +138,7 @@ MESH2ICD9  <- MESH2ICD9x %>% dplyr::select(-id) %>% distinct()
 rm(MESH2ICD9x, x)
 
 # filter by relevant diagnosis
-MESH2ICD9 <- MESH2ICD9 %>% filter(icd9 %in% as.numeric(relevant.diag$DIAG))
+MESH2ICD9 <- MESH2ICD9 %>% filter(icd9 %in% as.numeric(relevant.diag))
 ```
 
 ## DISEASE2BIOMARKER
@@ -147,7 +157,7 @@ DISEASE2BIOMARKER <-
 rm(icd9parsed)
 
 # filter by relevant diagnosis
-DISEASE2BIOMARKER <- DISEASE2BIOMARKER %>% filter(ICD9 %in% relevant.diag$DIAG)
+DISEASE2BIOMARKER <- DISEASE2BIOMARKER %>% filter(ICD9 %in% relevant.diag)
 DISEASE2BIOMARKER$BIOMARKERNAME <- make.names(trimws(toupper(DISEASE2BIOMARKER$BIOMARKERNAME)))
 ```
 
@@ -191,13 +201,13 @@ ICD9GROUPING <- inner_join(ICD9GROUPING, PHEWAS_HL)
 # filter by relevant diagnosis
 DISEASE2PHEWAS <-
   ICD9GROUPING %>%
-  filter(ICD9 %in% relevant.diag$DIAG) %>% 
+  filter(ICD9 %in% relevant.diag) %>% 
   dplyr::select(-ICD9_STRING,-PHEWAS_CODE, -PHEWAS_CODE_HL,-PHEWAS_STRING_HL) %>%
   distinct()
 
 DISEASE2PHEWAS_HL <- 
   ICD9GROUPING %>% 
-  filter(ICD9 %in% relevant.diag$DIAG) %>% 
+  filter(ICD9 %in% relevant.diag) %>% 
   dplyr::select(-ICD9_STRING, -PHEWAS_CODE_HL, -PHEWAS_CODE, -PHEWAS_STRING) %>% 
   distinct()
 ```
@@ -225,7 +235,7 @@ DISEASE2SYMPTOMS <- rbind(m1,m2) %>%  dplyr::select(-MESH_DISEASE_TERM) %>% dist
 rm(m1,m2)
 
 # filter by relevant diagnosis
-DISEASE2SYMPTOMS <- DISEASE2SYMPTOMS %>% filter(ICD9 %in% relevant.diag$DIAG)
+DISEASE2SYMPTOMS <- DISEASE2SYMPTOMS %>% filter(ICD9 %in% relevant.diag)
 ```
 
 ## DISEASE2GENES
@@ -248,7 +258,7 @@ disease2genes <-
 rm(min_curated_score)
 
 # filter by relevant diagnosis
-disease2genes <- disease2genes %>% filter(ICD9 %in% relevant.diag$DIAG)
+disease2genes <- disease2genes %>% filter(ICD9 %in% relevant.diag)
 
 # genes per disease
 disease2genes %>% group_by(ICD9) %>% tally(sort = TRUE)

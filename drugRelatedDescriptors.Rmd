@@ -49,6 +49,7 @@ PATIENTS_AGE_REGION <-
   dplyr::select(ENROLID, SUBSTANCENAME, PROPRIETARYNAME, PHARMCLS1) %>% 
   distinct()
 
+PATIENTS_AGE_REGION$SUBSTANCENAME <- as.character(PATIENTS_AGE_REGION$SUBSTANCENAME )
 PATIENTS_AGE_REGION <- parseColByIdx(PATIENTS_AGE_REGION,"SUBSTANCENAME",sep = ";")
 subst.freq          <- SUBSTANCE_FREQUENCY(PATIENTS_AGE_REGION)
 relevant.subst      <- subst.freq %>% filter(freq >= params$thres.subst.freq) %>% dplyr::select(SUBSTANCENAME)
@@ -378,6 +379,7 @@ parseMe((DrugSynonymsDrugBank$Common.name))
 parseMe((DrugSynonymsDrugBank$Synonyms))
 DrugSynonymsDrugBank <- parseColByIdx(DrugSynonymsDrugBank, "Common.name")
 DrugSynonymsDrugBank <- parseColByIdx(DrugSynonymsDrugBank, "Synonyms")
+DrugSynonymsDrugBank$Synonyms <- as.character(DrugSynonymsDrugBank$Synonyms)
 DrugSynonymsDrugBank <- parseColByIdx(DrugSynonymsDrugBank, "Synonyms", sep="\\|")
 
 DrugSynonymsDrugBank2 <- 
@@ -596,6 +598,7 @@ fi.drug2sideeffects <- drug2sideeffects %>% dplyr::rename(SIDEEFFECTS = MEDDRA)
 fi.drug2go <- drug2go
 
 fi.drug2pathway <- drug2pathway
+# save(fi.drug2pathway, file="output/fi.drug2pathway.RData", compress = TRUE)
 ```
 
 # Feature Pool Output
@@ -618,6 +621,7 @@ fo.drug2indications <- My.make.names(fo.drug2indications)
 fo.drug2sideeffects <- My.make.names(fo.drug2sideeffects)
 fo.drug2go          <- My.make.names(fo.drug2go)
 fo.drug2pathway     <- My.make.names(fo.drug2pathway)
+save(fo.drug2pathway,file="output/fo.drug2pathway.RData")
 
 # stats for fo's
 FeatStats(fo.DRD1)
