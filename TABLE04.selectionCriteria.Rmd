@@ -1,0 +1,202 @@
+---
+title: "TABLE04.selectionCriteria.Rmd"
+output: html_notebook
+date: "2017 FEB 02"
+---
+
+
+```{r}
+# check assignment to indexdate
+
+load("data/TABLE04SAS7BDAT.RData")
+source("z_start.R")
+
+# diagnosis events
+##################
+diag.time <- 
+  TABLE04SAS7BDAT %>% 
+  filter(DIAG != "") %>% 
+  select(ENROLID, DIAG, EVTDATE, INDEXDT) %>% 
+  distinct()
+
+diag.time      <- ParseICD9(diag.time)
+diag.time$DIAG <- as.numeric(diag.time$DIAG)
+diag.time      <- diag.time %>% filter(DIAG != "", !is.na(DIAG))
+head(diag.time)
+
+# AED events
+############
+
+subst.time <- 
+  TABLE04SAS7BDAT %>% 
+  filter(SUBSTANCENAME != "") %>% 
+  select(ENROLID, SUBSTANCENAME, PHARMCLS1, STARTDT) %>% 
+  distinct()
+
+source("functions/setAEDFlag.R")
+subst.time <- setAEDFlag(subst.time) %>% filter(isAED == TRUE) %>% select(-PHARMCLS1, -isAED) %>% distinct()
+head(subst.time)
+```
+
+1.	an occurrence of ≥2 ICD-9-CM codes of 345.xx among separate medical encounters (separate dates in any care venue)
+
+2.	an occurrence of ≥1 ICD-9-CM code of 345.xx AND ≥1 ICD-9-CM code of 780.3x among separate medical encounters
+
+3.	an occurrence of 1 ICD-9-CM code of 345.xx AND code(s) for AED prescription after the 345.xx code
+
+4.	an occurrence of ≥ 2 ICD codes of 780.39 among separate medical encounters AND code(s) for AED treatment. The code(s) for the AED treatment should occur after the second 780.3x irrespective of the presence or absence of an AED code after the first 780.39 code
+
+5.	Patients with ICD-9-CM code 345.3 will be required to have an occurrence of ≥2 ICD-9-CM codes of 345.3 separated by at least 30 days, or an occurrence of the 345.3 code and ≥1 ICD-9-CM code 780.39 separated by at least 30 days, or ≥1 ICD-9-CM code 345.3 and ≥1 ICD-9-CM code 345.xx  encounters on separate days
+
+6.	For definitions requiring at least 2 ICD-9-CM codes the first diagnosis code will be the index date.
+
+
+# set functions
+## 1st criterium
+1.	an occurrence of ≥2 ICD-9-CM codes of 345.xx among separate medical encounters (separate dates in any care venue)
+```{r}
+
+GetFirstEVTDATE.c1 <- function(x) {
+# flag all observations which fulfill criterium
+x$c1 <- round(x$DIAG,0) == 345
+
+# get patients which fulfill criterium
+c1 <- 
+  x %>% 
+  filter(c1 == TRUE) %>% 
+  select(ENROLID, EVTDATE) %>%  distinct() %>% 
+  group_by(ENROLID) %>% tally() %>% filter(n >= 2) %>% # has at least 2 events at distinct days
+  select(ENROLID) 
+
+# get first diagnosis code event
+c1.ixday <- 
+  x %>% 
+  filter(c1 == TRUE) %>% 
+  filter(ENROLID %in% c1$ENROLID) %>% # patients with >= 2 345.xx diagnosis at different EVTDATE
+  select(ENROLID, EVTDATE) %>%  distinct() %>% 
+  group_by(ENROLID) %>% mutate(c1.ixday = min(EVTDATE)) %>%  # get first event
+  select(ENROLID, c1.ixday) %>% distinct() 
+
+return(c1.ixday)
+}
+
+```
+
+## 2nd criterium
+2.	an occurrence of ≥1 ICD-9-CM code of 345.xx AND ≥1 ICD-9-CM code of 780.3x among separate medical encounters
+```{r}
+
+GetFirstEVTDATE.c2 <- function(x) {
+
+  # step by step
+  ###############
+  # 1. get all patients with 345.xx code and create table ENROLID | EVTDATES.345
+  #    EVTDATES.<> is a list containing the unique EVTDATES for that patient for the particular diagnosis
+  # 2. do the same for 780.3x codes ENROLID | EVTDATES.780
+  # 3. make an inner join and retrieve table ENROLID | EVTDATES.345 | EVTDATES.780
+  # 4. if any of the EVTDATES column has an EVTDATE which is not in the intersect of both,
+  # 5. compute minimum EVTDATE for TRUE ones
+  
+  # 1.
+  x$diag.345 <- round(x$DIAG,0) == 345 
+  
+  diag.345.enrolid <- x %>% filter(diag.345 == TRUE) %>% select(ENROLID) %>% distinct()
+  
+  diag.345 <- 
+    x %>% 
+    filter(ENROLID %in% diag.345.enrolid$ENROLID) %>% 
+    filter(diag.345 == TRUE) %>% 
+    select(ENROLID, EVTDATE) %>% distinct()
+  
+  diag.345$EVTDATE <- as.character(diag.345$EVTDATE)
+  diag.345 <- aggregate(EVTDATE ~ ENROLID, diag.345, FUN = function(x) list(unique(x)))
+  
+  # 2.
+  x$diag.780 <- round(x$DIAG,1) == 780.3
+  
+  diag.780.enrolid <- x %>% filter(diag.780 == TRUE) %>% select(ENROLID) %>% distinct()
+  
+  diag.780 <- 
+    x %>% 
+    filter(ENROLID %in% diag.780.enrolid$ENROLID) %>% 
+    filter(diag.780 == TRUE) %>% 
+    select(ENROLID, EVTDATE) %>% distinct()
+  
+  diag.780$EVTDATE <- as.character(diag.780$EVTDATE)
+  diag.780 <- aggregate(EVTDATE ~ ENROLID, diag.780, FUN = function(x) list(unique(x)))
+  
+  # 3.
+  diag.both <- inner_join(diag.345, diag.780, by = "ENROLID")
+  
+  # 4.
+  diag.both$c2.ixday <- ""
+  for(k in 1:nrow(diag.both)) {
+    tmp.EVTDATES1 <- diag.both$EVTDATE.x[[k]]
+    tmp.EVTDATES2 <- diag.both$EVTDATE.y[[k]]
+    tmp.diff1 <- setdiff(tmp.EVTDATES1, tmp.EVTDATES2)
+    tmp.diff2 <- setdiff(tmp.EVTDATES2, tmp.EVTDATES1)
+    if(length(union(tmp.diff1, tmp.diff2)) > 0)
+      diag.both$c2.ixday[k] <- min(union(tmp.EVTDATES1, tmp.EVTDATES2)) # 5.
+  }
+  
+  diag.both          <- diag.both %>% select(ENROLID, c2.ixday) %>% distinct()
+  diag.both$c2.ixday <- as.Date(diag.both$c2.ixday)
+  
+  return(diag.both)
+
+}
+
+
+```
+
+
+## 3rd
+3.	an occurrence of 1 ICD-9-CM code of 345.xx AND code(s) for AED prescription after the 345.xx code
+```{r}
+
+GetFirstEVTDATE.c3 <- function(diag.time, subst.time) {
+  # diag.time is a data.frame:
+  # columns are: ENROLID, DIAG, IXDAYS
+  
+  # subst.time is a data.frame:
+  # columns are: ENROLID, SUBSTANCENAME, STARTDT
+  # - AEDs only
+
+  # step by step
+  ##############
+  # 1. get first occurrence of an 345.xx code and retrieve ENROLID | diag.first.date
+  # 2. get last occurrence of an AED prescription and retrieve ENROLID | diag.last.aed
+  # 3. if date of (2.) is >= date of (1.), if so, set c3.ixday to date of (1.)  
+  
+  # 1
+  diag.345  <- round(diag.time$DIAG,0) == 345
+  
+  diag.firstDay <- 
+    diag.time[diag.345,] %>% select(ENROLID, EVTDATE) %>% distinct() %>% 
+    group_by(ENROLID) %>% mutate(minDate = min(EVTDATE)) %>% # get smallest EVTDATE
+    ungroup() %>% 
+    select(ENROLID, minDate) %>% distinct() 
+  
+  # 2
+  subst.lastDay <-
+    subst.time %>% 
+    group_by(ENROLID) %>% 
+    mutate(maxDay = max(STARTDT)) %>% 
+    select(-STARTDT) %>% ungroup() %>% distinct()
+  
+}
+
+```
+
+
+
+# apply selection criteria
+```{r}
+
+y <- GetFirstEVTDATE.c1(diag.time[1:1e5,])
+y <- GetFirstEVTDATE.c2(diag.time[1:1e5,])
+
+
+
+```
+
