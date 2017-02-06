@@ -1,0 +1,421 @@
+---
+title: "prevalence and incidence of co-morbidities"
+subtitle: "adult (AGE >= 18)"
+author: "Thomas Gerlach"
+date: "27 OCT 2016"
+output: html_document
+---
+
+```{r}
+###############################################################################
+# $HeadURL:  $ incidence_comorbidities_byAED_adult18.Rmd
+# $Rev:  $
+# $Date:  $ 26 OCT 2016
+# $Author:  $ E610046
+# -----------------------------------------------------------------------------
+# CATEG:   incidence, prevalence
+# DESCR: 
+# KEYS : 
+# INPUT:
+# OUT  : 
+# REQ  : 
+# NOTES: 
+# FILTERS: 
+# - only patients treatet with AED's
+# - only non-epilepsy events (omitted:   "Convulsions", "Epilepsy, recurrent seizures, convulsions",
+#   "Partial epilepsy", "Epilepsy", "Generalized convulsive epilepsy")
+###############################################################################
+
+```
+
+```{r setup, include=FALSE, echo = FALSE }
+# set knitr defaults
+knitr::opts_chunk$set(echo = FALSE, include = FALSE, fig.width=20, fig.height=10)
+```
+  
+# load resources
+```{r start, echo=FALSE}
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
+PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+```
+
+# set and load global variables
+```{r, echo = FALSE, fig.width=20, fig.height=10}
+# data
+phew2custom <- read.csv2("~/epilepsie_preprocessing_descrStat/data/phewas_nonEpi_gt1percent.csv")
+
+# # main co-morbidities
+mainComorb <- c(
+  "heart and circular system",
+  "malaise, nausea, vertigo",
+  "metabolic diseases",
+  "migrane, headache",
+  "Neurological disorders",
+  "psychatric and psychological disorders",
+  "substance addiction and disorders")
+
+main_Phew_highlvl    <- as.character(phew2custom$PHEWAS_STRING_HL[phew2custom$customised_high_level2 %in% mainComorb])
+
+# # phewas epilepsy-only terms
+phew_epiOnly <- c(
+  "Convulsions",
+  "Epilepsy, recurrent seizures, convulsions",
+  "Partial epilepsy",
+  "Epilepsy",
+  "Generalized convulsive epilepsy"
+)
+
+```
+
+# apply filters
+```{r standardize population, echo=FALSE}
+
+source("functions/n_patient_per_period.R")
+source( "functions/patient_monthly_enrolment.R")
+source("functions/patient_nonNegative_DAYSUPP.R")
+source("functions/setAEDFlag.R")
+source("functions/aggregate_AED_substancenames.R")
+source("functions/add_Phew_PhewHighlevel.R")
+source("functions/disOnt_ICD9_2_MESH.R")
+
+# # reset PATIENT_AGE_REGION filters: 0y FU
+# PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+
+# # re-compute missing IXDAYS for all observations
+newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
+PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
+
+# # # Keep only patients within valid time period 
+PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
+
+# # Add Age and Regional Information
+PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
+
+# # # only keep patients without gaps within the relevant observation period
+# PATIENTS_AGE_REGION <- filter_patient_gapFreePeriod(PATIENTS_AGE_REGION,gapFreePeriod = "quarter")
+
+# # patient monthly enrolment: health insurance
+# PATIENTS_AGE_REGION <- patient_filter_healthCareEnrolment(PATIENTS_AGE_REGION)
+
+# # only patients with non-negative DAYSUP
+PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
+
+# # set AED flag
+PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
+
+# # aggregate AED SUBSTANCENAME's
+PATIENTS_AGE_REGION <- aggregate_AED_substancenames(PATIENTS_AGE_REGION)
+
+# # match PHEWAS terms to ICD9 terms
+PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+
+# # PATIENTS_AGE_REGION backup for population size computations
+PATIENTS_AGE_REGION_bak <- PATIENTS_AGE_REGION
+
+
+```
+
+# additional filtering
+* only PATIENTS with AED prescriptions
+* AGE >= 18
+```{r, echo = FALSE}
+pat.with.aeds <- 
+  PATIENTS_AGE_REGION %>% 
+  filter(isAED == TRUE) %>% 
+  select(ENROLID) %>% 
+  distinct()
+
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>%  filter(AGE >= 18)
+# popsize
+nPat         <- PATIENTS_AGE_REGION %>% select(ENROLID) %>% distinct() %>% tally()
+```
+
+# general summary statistics
+```{r}
+
+library(scales) # for labels=percent
+
+# number patients per AED
+nPat_byAED <- PATIENTS_AGE_REGION %>%  filter(isAED == TRUE) %>% 
+  select(SUBSTANCENAME,ENROLID) %>% distinct() %>% group_by(SUBSTANCENAME) %>% 
+  tally(sort = TRUE)
+
+p1 <- ggplot(nPat_byAED, aes(x=reorder(SUBSTANCENAME,-n), y=n/nPat$n)) + geom_bar(stat="identity") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Distribution all AEDs \n AGE >= 18") + xlab("SUBSTANCENAME") + 
+  ylab("% population") +  geom_text(aes(label=n), vjust=0) +
+  scale_y_continuous(labels=percent)
+
+
+# age distribution, all AEDs
+title <- paste("AGE histogram \n all AEDs, AGE >= 18")
+p2 <- ggplot(PATIENTS_AGE_REGION, aes(AGE)) + 
+  geom_histogram(aes(y=..density..),bins = 50) +
+  ggtitle(title) + scale_y_continuous(labels=percent)
+  
+# age distribution, all AEDs, by each AED
+x <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% 
+  select(SUBSTANCENAME, AGE, ENROLID)  %>% distinct()
+
+p3 <- ggplot(x, aes(AGE)) + geom_bar(aes(y=(..count..)/sum(..count..))) +
+  facet_wrap(~ SUBSTANCENAME) +
+  theme(plot.title = element_text(size=10)) +
+  ggtitle("Age distribution by AED ") +
+  scale_y_continuous(labels=percent)
+
+
+
+```
+
+# support functions
+```{r, echo = FALSE}
+
+library(parallel)
+
+##############################################
+Prevalence_Incidence <- function(pat_comorb_) {
+  
+  pat_hist   <- pat_comorb_ %>% filter(IXDAYS <= 0) %>% select(-IXDAYS) %>% distinct() # history
+  pat_fut    <- pat_comorb_ %>% filter(IXDAYS > 0)  %>% select(-IXDAYS) %>% distinct() # future
+  pat_comorb_ <- pat_comorb_ %>% select(-IXDAYS) %>% distinct()
+  
+  # compute occurrence in history 
+  # # helper function for parallelization with mclapply
+  par_fun <- function(e) {
+    e_phew      <- pat_comorb_ %>% filter(ENROLID == e) %>% select(PHEWAS_STRING)
+    e_phew      <- e_phew$PHEWAS_STRING
+    e_phew_hist <- pat_hist %>% filter(ENROLID == e) %>% select(PHEWAS_STRING)
+    e_phew_hist <- e_phew_hist$PHEWAS_STRING
+    e_phew_fut  <- pat_fut %>% filter(ENROLID == e) %>% select(PHEWAS_STRING)
+    e_phew_fut  <- e_phew_fut$PHEWAS_STRING
+    x           <- cbind( inHistory = e_phew %in% e_phew_hist, inFuture = e_phew %in% e_phew_fut )
+    return(x)
+  }
+  # # parallel computing task
+  e_ids  <- pat_comorb_ %>% select(ENROLID) %>% distinct()
+  e_ids  <- as.list(e_ids$ENROLID)
+  result <- mclapply(X = e_ids,par_fun,mc.cores = 15)
+  
+  # # transform result from list to data table
+  listToDf <- function(mylist) {
+    y <- NULL
+    L <- length(mylist)
+    for(l in 1:L) {
+      x <- mylist[[l]]
+      y <- rbind(y,x)
+    }
+    return(as.data.frame(y))
+  }
+  result_df <- listToDf(result)
+  return(result_df)
+}
+
+########################################
+Combine_Results <- function(result_df_,pat_comorb_, PATIENTS_AGE_REGION_) {
+  # combine results
+  # # compute prevalence and incidence
+  result_df_$prev <- result_df_$inHistory | result_df_$inFuture
+  result_df_$inc  <- result_df_$inFuture & !(result_df_$inHistory)
+  
+  # # combine (add hist,future,prevalence,incidence)
+  pat_comorb_ <- pat_comorb_ %>% select(-IXDAYS) %>% distinct()
+  comb_res <- as_tibble(cbind(pat_comorb_,result_df_))
+  
+  # add phewas highlevel terms
+  comb_res <-
+    left_join(
+      comb_res,
+      PATIENTS_AGE_REGION_ %>% select(PHEWAS_STRING, PHEWAS_STRING_HL) %>% distinct(),
+      by="PHEWAS_STRING"
+    )
+  return(comb_res)
+}
+
+##################################################
+Wrap_summary_stats <- function(comb_res_, popSize, AED=NA){
+  
+  summary_stats <- function(x ,popSize,by) {
+    
+    if (by=="PHEWAS_STRING"){
+      y1        <- aggregate( ENROLID ~ PHEWAS_STRING, data=x, FUN=length) %>% rename(n = ENROLID)
+      y1$n_rank <- rank(-y1$n)
+      y1$n_frac_of_popSize <- round(y1$n / popSize,2)
+      y2        <- aggregate( . ~ PHEWAS_STRING, data= x %>% select(PHEWAS_STRING,inHistory,inFuture,prev,inc), FUN=sum) 
+      incidenceRate <- round(y2$inc / y2$prev,2)
+      y <- cbind(y1,y2 %>% select(-PHEWAS_STRING),incidenceRate)
+      y <- y[order(y$n_rank),]
+      return(y)
+    }
+    
+    if (by=="PHEWAS_STRING_HL"){
+      y1        <- aggregate( ENROLID ~ PHEWAS_STRING_HL, data=x, FUN=length) %>% rename(n = ENROLID)
+      y1$n_rank <- rank(-y1$n)
+      y1$n_frac_of_popSize <- round(y1$n / popSize,2)
+      y2        <- aggregate( . ~ PHEWAS_STRING_HL, data= x %>% select(PHEWAS_STRING_HL,inHistory,inFuture,prev,inc), FUN=sum) 
+      incidenceRate <- round(y2$inc / y2$prev,2)
+      y <- cbind(y1,y2 %>% select(-PHEWAS_STRING_HL),incidenceRate)
+      y <- y[order(y$n_rank),]
+      return(y)
+    }
+    
+    if (by=="mainComorb"){
+      y1        <- aggregate( ENROLID ~ mainComorb, data=x, FUN=length) %>% rename(n = ENROLID)
+      y1$n_rank <- rank(-y1$n)
+      y1$n_frac_of_popSize <- round(y1$n / popSize,2)
+      y2        <- aggregate( . ~ mainComorb, data= x %>% select(mainComorb,inHistory,inFuture,prev,inc), FUN=sum) 
+      incidenceRate <- round(y2$inc / y2$prev,2)
+      y <- cbind(y1,y2 %>% select(-mainComorb),incidenceRate)
+      y <- y[order(y$n_rank),]
+      return(y)
+    }
+  }
+  
+  s_phewas <- summary_stats(comb_res_, popSize, "PHEWAS_STRING") # by phewas
+  s_phewas_highlvl <- summary_stats(comb_res_, popSize, "PHEWAS_STRING_HL") # by phewas highlevel
+  
+  colnames(s_phewas)[1] <- colnames(s_phewas_highlvl)[1]  <- "name"
+  s_phewas <- cbind(AED,s_phewas)
+  s_phewas_highlvl <- cbind(AED,s_phewas_highlvl)
+  
+  x <- rbind(
+    cbind(level="phewas",s_phewas),
+    cbind(level="phewas_highlevel",s_phewas_highlvl)
+    )
+  
+  return(x)
+}
+
+```
+
+# compute prevalence and incidence over all AEDs
+```{r}
+# baseline data
+pat_comorb <- 
+  PATIENTS_AGE_REGION %>% 
+  filter(PHEWAS_STRING != "") %>% 
+  select(ENROLID, AGE, PHEWAS_STRING, IXDAYS) %>% 
+  distinct()
+#
+results <- Prevalence_Incidence(pat_comorb)
+results_comb <- Combine_Results(results, pat_comorb, PATIENTS_AGE_REGION)
+results_summary <- Wrap_summary_stats(results_comb,popSize = nPat$n,AED = "all")
+#
+all.results_summary <- results_summary # will be used again below
+```
+
+# compute prevalence and incidence by one of the top-10 AEDs
+```{r}
+top10_AEDs <- PATIENTS_AGE_REGION %>%  filter(isAED == TRUE) %>% 
+  select(SUBSTANCENAME,ENROLID) %>% distinct() %>% group_by(SUBSTANCENAME) %>% 
+  tally(sort = TRUE)  %>% top_n(10,n)
+
+byAed.results_summary <- NULL
+
+for(aed in top10_AEDs$SUBSTANCENAME ) {
+  print(aed)
+  # enrolid's for subset
+  aed_pat <- PATIENTS_AGE_REGION %>% filter(SUBSTANCENAME %in% aed) %>% 
+    select(ENROLID) %>% distinct()
+  # subset
+  tmp.pat_comorb <- PATIENTS_AGE_REGION %>% 
+    filter(PHEWAS_STRING != "", ENROLID %in% aed_pat$ENROLID) %>%
+    select(ENROLID, AGE, PHEWAS_STRING, IXDAYS) %>% distinct()
+  #
+  tmp.results      <- Prevalence_Incidence(tmp.pat_comorb)
+  tmp.results_comb <- Combine_Results(tmp.results,tmp.pat_comorb ,PATIENTS_AGE_REGION)
+  tmp.results_summary <- Wrap_summary_stats(tmp.results_comb,popSize = nPat$n,AED = aed)
+  #
+  byAed.results_summary <- rbind(byAed.results_summary, tmp.results_summary)
+}
+
+```
+
+# combine "all" and "top-10" AED results
+```{r}
+# comorbidity Incidence Prevalence by AEDs
+comIncPrev_byAed <- rbind(all.results_summary, byAed.results_summary) 
+
+# facet plot of top-15 co-morbidity in each particular group: n (frequency)
+# # PHEWAS
+x <- comIncPrev_byAed %>% filter(level == "phewas", !(name %in% phew_epiOnly)) %>% distinct() %>% 
+  group_by(AED) %>% top_n(15,n)
+
+p4 <- ggplot(x, aes(x = reorder(name,-n), y=n/nPat$n, fill=name)) + geom_bar(stat="identity") + 
+  facet_wrap(~ AED,nrow = 3) +
+  theme(plot.title = element_text(size=10)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Top-15 comorbidities by AED \n PHEWAS, AGE >= 18") +
+  xlab("Co-Morbidity (PHEWAS)") + ylab("% population") +
+  guides(fill=guide_legend(ncol=1)) +
+  coord_flip()
+
+# # PHEWAS highlevel
+x <- comIncPrev_byAed %>% filter(level == "phewas_highlevel", !(name %in% phew_epiOnly)) %>% distinct() %>% 
+  group_by(AED) %>% top_n(15,n)
+
+p5 <- ggplot(x, aes(x = reorder(name,-n), y=n/nPat$n, fill=name)) + geom_bar(stat="identity") + 
+  facet_wrap(~ AED,nrow = 3) +
+  theme(plot.title = element_text(size=10)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(strip.text = element_text(size=7)) +
+  ggtitle("Top-15 comorbidities by AED \n PHEWAS highlevel, AGE >= 18") +
+  xlab("Co-Morbidity (PHEWAS_highlevel") + ylab("% population") +
+  coord_flip() +
+  guides(fill=guide_legend(ncol=1))
+
+# facet plot of top15 co-morbidity in each particular group: incidence rate
+# # PHEWAS
+x <- comIncPrev_byAed %>% filter(level == "phewas", !(name %in% phew_epiOnly)) %>% distinct() %>% 
+  group_by(AED) %>% top_n(15,n)
+
+p6 <- ggplot(x, aes(x = reorder(name,-n), y=incidenceRate, fill=name)) + geom_bar(stat="identity") + 
+  facet_wrap(~ AED,nrow = 3) +
+  theme(plot.title = element_text(size=10)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(strip.text = element_text(size=7)) +
+  ggtitle("Incidence Top-15 comorbidities by AED \n PHEWAS, AGE >= 18") +
+  xlab("Co-Morbidity (PHEWAS)") +
+  coord_flip() +
+  guides(fill=guide_legend(ncol=1))
+
+# # PHEWAS highlevel
+x <- comIncPrev_byAed %>% filter(level == "phewas_highlevel", !(name %in% phew_epiOnly)) %>% distinct() %>% 
+  group_by(AED) %>% top_n(15,n)
+
+p7 <- ggplot(x, aes(x = reorder(name,-n), y=incidenceRate, fill=name)) + geom_bar(stat="identity") + 
+  facet_wrap( ~ AED,nrow = 3) +
+  theme(plot.title = element_text(size=10)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(strip.text = element_text(size=7)) +
+  ggtitle("Incidence Top-15 comorbidities by AED \n PHEWAS highlevel, AGE >= 18") +
+  xlab("Co-Morbidity (PHEWAS_highlevel") +
+  coord_flip() +
+  guides(fill=guide_legend(ncol=1))
+```
+
+# pdf output
+```{r}
+filename <- paste("output/incidence_prevalence/incidence_prevalence_adult18_2yMH_",Sys.Date(),".pdf",sep="")
+pdf(filename,width = 15,height = 12)
+print(p1)
+print(p2)
+print(p3)
+print(p4)
+print(p5)
+print(p6)
+print(p7)
+dev.off()
+
+```
+
+# file output
+```{r}
+filename <- paste("output/incidence_prevalence/incidence_prevalence_adult18_2yMH_",Sys.Date(),".csv",sep="")
+write.csv2(comIncPrev_byAed,file = filename,row.names=FALSE)
+filename <- paste("output/incidence_prevalence/incidence_prevalence_adult18_2yMH_",Sys.Date(),".RData",sep="")
+save(comIncPrev_byAed,file=filename,compress=TRUE)
+
+```
+
