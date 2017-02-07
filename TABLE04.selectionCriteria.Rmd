@@ -13,6 +13,11 @@ date: "2017 FEB 06 validation"
 load("data/TABLE04SAS7BDAT.RData")
 source("z_start.R")
 
+# number of observations with missing ixdays:
+n <- TABLE04SAS7BDAT %>% select(IXDAYS) %>% filter(is.na(IXDAYS)) %>% tally()
+cat("number of observations with missing ixdays:", n$n, "\n")
+
+
 # diagnosis events
 # - only columns ENROLID, DIAG, EVTDATE, INDEXDT)
 # - parsed ICD9-Codes
@@ -167,6 +172,8 @@ GetFirstEVTDATE.c2 <- function(x) {
 
 ## 3rd
 An occurrence of 1 ICD-9-CM code of 345.xx AND code(s) for AED prescription *after* the 345.xx code
+
+*validated*
 ```{r}
 
 GetFirstEVTDATE.c3 <- function(diag.time, subst.time) {
@@ -460,10 +467,12 @@ knitr::kable(cbind(criterium, criterium.details, n.detail))
 newIxdays <- unique(rbind(c1, c2, c3, c4, c5.A, c5.B, c5.C))
 newIxdays <- aggregate(ixdate ~ ENROLID, newIxdays, FUN = min)
 oldIxdays <- TABLE04SAS7BDAT %>% select(ENROLID, INDEXDT) %>% distinct()
-
 # join new to old
 oldVsNew <- inner_join(oldIxdays %>% rename(old = INDEXDT), newIxdays %>% rename(new = ixdate), by = "ENROLID")
 oldVsNew <- oldVsNew %>% mutate(diff = old-new) %>% mutate(hasDiff = abs(diff) >0)
+
+# save patch data
+save(newIxdays, file="data/patches/newIxdays.RData",compress = TRUE)
 ```
 
 ### summary statistics

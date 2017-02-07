@@ -139,7 +139,7 @@ Diag_frequency <- function(P) {
 # standardized filter for patients table
 FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, sparse = FALSE, cohort = "adult") {
   
-  if (!sparse) PATIENTS_AGE_REGION <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
+  # if (!sparse) PATIENTS_AGE_REGION <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
   if (sparse) PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
   
   # correct / complete IXDAYS
@@ -186,6 +186,62 @@ FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, sparse = FALSE, cohort =
     # Patch ICD9 Code V12.54
     source("functions/Patch_V12.54.R")
     PATIENTS_AGE_REGION <- Patch_V12.54(PATIENTS_AGE_REGION)
+  } else if (cohort == "children") {
+    PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "children")
+  }
+  
+  # return
+  return(PATIENTS_AGE_REGION)
+}
+
+####################
+
+FILTER_PATIENTS_AGE_REGION.T2 <- function(x, cohort = "adult") {
+
+  # *.T2 consider patched TABLE04.T2 with corrected IXDAYS
+    
+  source("functions/n_patient_per_period.R")
+  source("functions/patient_monthly_enrolment.R")
+  source("functions/patient_nonNegative_DAYSUPP.R")
+  source("functions/setAEDFlag.R")
+  source("functions/aggregate_AED_substancenames.R")
+  source("functions/add_Phew_PhewHighlevel.R")
+  
+  # filtering and parsing
+  ##################
+  
+  # Keep only patients within valid time period 
+  
+  load("data/patches/enrol.MH.RData")
+  enrol.MH <- enrol.MH %>% filter(medicalHistory >= 2*365) %>% select(ENROLID)
+  PATIENTS_AGE_REGION <- x %>% filter(ENROLID %in% enrol.MH$ENROLID)
+  
+  # only patients with non-negative DAYSUP
+  PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
+  # Add Age and Regional Information
+  PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
+  
+  # adult only (AGE >= 18)
+  if(cohort == "adult")  { 
+    PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
+  } else if(cohort == "children") {
+    PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE <= 16) %>% distinct()
+  }
+  
+  # deseparate substancenames
+  PATIENTS_AGE_REGION <- parseColByIdx(PATIENTS_AGE_REGION,"SUBSTANCENAME",sep = ";")
+  # set AED flag
+  PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
+  # only patients which were treated with AEDs
+  pat.with.aeds <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% dplyr::select(ENROLID) %>% distinct()
+  PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
+  # add phewas and phewas_hl
+  PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+  
+  # add main comorbidities
+  if(cohort == "adult") {
+    PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "adult")
+    # Patch ICD9 Code V12.54
   } else if (cohort == "children") {
     PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "children")
   }

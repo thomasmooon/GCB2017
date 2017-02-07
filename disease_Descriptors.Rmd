@@ -258,7 +258,7 @@ keys <- keys(org.Hs.eg.db, keytype = "ENTREZID")
 universe <- as_tibble(AnnotationDbi::select(org.Hs.eg.db, keys = keys, keytype="ENTREZID" ,columns=c("ENTREZID","GO")))
 universe <- universe[complete.cases(universe),] %>% dplyr::select(ENTREZID) %>% distinct()
 
-detach("package:org.Hs.eg.db", unload=TRUE)
+# detach("package:org.Hs.eg.db", unload=TRUE)
 
 # define test params, then hypergeom. test, then fdr-correction
 GoEnrichment <- function(genes, .universe, .ontology = "BP", .pvalueCutoff = 0.05, .fdrValueCutoff = 0.05) {
@@ -342,7 +342,7 @@ keys <- keys(org.Hs.eg.db, keytype = "ENTREZID")
 kegg2entrez <- as_tibble(AnnotationDbi::select(org.Hs.eg.db, keys = keys, keytype="ENTREZID" ,columns=c("ENTREZID","PATH")))
 kegg2entrez <- kegg2entrez[complete.cases(kegg2entrez),]
 
-disease2path.enr <- mclapply(disease2genes.enr, FUN = function(x) (PathEnrichment(x, kegg2entrez))[,1], mc.preschedule = FALSE, mc.cores = 15)
+disease2path.enr <- mclapply(disease2genes.enr, FUN = function(x) (PathEnrichment(x, kegg2entrez))[,1], mc.preschedule = FALSE, mc.cores = 1)
 disease2path.enr <- lapply(disease2path.enr, as.character)
 
 # attached enriched paths to diseases
@@ -367,7 +367,7 @@ disease2kegg <- disease2path
 ```{r}
 load("~/epilepsie_preprocessing_descrStat/data/wikipathways/entrez2wiki.RData")
 
-disease2path.enr <- mclapply(disease2genes.enr, FUN = function(x) (PathEnrichment(x, entrez2wiki))[,1], mc.preschedule = FALSE, mc.cores = 15)
+disease2path.enr <- mclapply(disease2genes.enr, FUN = function(x) (PathEnrichment(x, entrez2wiki))[,1], mc.preschedule = FALSE, mc.cores = 1)
 disease2path.enr <- lapply(disease2path.enr, as.character)
 
 # attached enriched paths to diseases
@@ -420,24 +420,31 @@ DISEASE2PATH$ICD9      <- as.numeric(DISEASE2PATH$ICD9)
 ## spread / reshape
 ```{r}
 DISEASE2PHEWAS$val <- 1
+DISEASE2PHEWAS <- unique(DISEASE2PHEWAS)
 DISEASE2PHEWAS     <- spread(DISEASE2PHEWAS, DISEASE.PHEWAS, val, fill = 0, sep = ".x." )
 
 DISEASE2PHEWASHL$val <- 1
+DISEASE2PHEWASHL <- unique(DISEASE2PHEWASHL)
 DISEASE2PHEWASHL     <- spread(DISEASE2PHEWASHL, DISEASE.PHEWAS_HL, val, fill = 0, sep = ".x." )
 
 DISEASE2MESH$val <- 1
+DISEASE2MESH <- unique(DISEASE2MESH)
 DISEASE2MESH     <- spread(DISEASE2MESH, DISEASE.MESHDISEASE, val, fill = 0, sep = ".x." )
 
 DISEASE2SYMPTOMS$val <- 1
+DISEASE2SYMPTOMS <- unique(DISEASE2SYMPTOMS)
 DISEASE2SYMPTOMS     <- spread(DISEASE2SYMPTOMS, DISEASE.SYMPTOMS, val, fill = 0, sep = ".x." )
 
 DISEASE2BIOMARKER$val <- 1
+DISEASE2BIOMARKER <- unique(DISEASE2BIOMARKER)
 DISEASE2BIOMARKER     <- spread(DISEASE2BIOMARKER, DISEASE.BIOMARKER, val, fill = 0, sep = ".x." )
 
 DISEASE2GO$val <- 1
+DISEASE2GO <- unique(DISEASE2GO)
 DISEASE2GO     <- spread(DISEASE2GO, DISEASE.GO, val, fill = 0, sep = ".x." )
 
 DISEASE2PATH$val <- 1
+DISEASE2PATH <- unique(DISEASE2PATH)
 DISEASE2PATH     <- spread(DISEASE2PATH, DISEASE.PATH, val, fill = 0, sep = ".x." )
 
 # print summary
@@ -450,6 +457,7 @@ dims   <- c(paste(dim(DISEASE2PHEWAS),collapse=" x "),
             paste(dim(DISEASE2GO),collapse=" x "),
             paste(dim(DISEASE2PATH),collapse=" x ")
             )
+
 s           <- as.data.frame(dims,tables)
 colnames(s) <- "nICD9 x nFeatures"
 knitr::kable(s)
