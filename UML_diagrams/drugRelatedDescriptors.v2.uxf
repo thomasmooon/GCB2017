@@ -1,0 +1,3713 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="umlet" version="14.1.1">
+  <help_text>// Uncomment the following line to change the fontsize and font:
+// fontsize=14
+fontfamily=Monospaced //possible: SansSerif,Serif,Monospaced
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+// Welcome to UMLet!
+//
+// Double-click on elements to add them to the diagram, or to copy them
+// Edit elements by modifying the text in this panel
+// Hold Ctrl to select multiple elements
+// Use Ctrl+mouse to select via lasso
+//
+// Use +/- or Ctrl+mouse wheel to zoom
+// Drag a whole relation at its central square icon
+//
+// Press Ctrl+C to copy the whole diagram to the system clipboard (then just paste it to, eg, Word)
+// Edit the files in the "palettes" directory to create your own element palettes
+//
+// Select "Custom Elements &gt; New..." to create new element types
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// This text will be stored with each diagram;  use it for notes.</help_text>
+  <zoom_level>3</zoom_level>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1608</x>
+      <y>132</y>
+      <w>42</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>PATIENTS.DRUGS2
+style=AutoResize
+--
+PROPRIETARYNAME 
+--
+SUBSTANCENAME   
+--
+Synonyms
+-
+PHARMCLS1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1776</x>
+      <y>399</y>
+      <w>93</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>ICD9GROUPING 
+bg=#3c7a00
+-
+SOURCE: https://medschool.vanderbilt.edu/cpm/
+phewas-phenome-wide-association-studies-0
+OLDNAME: ICD9code_translation_updated
+
+-
+--
+ICD9          
+--
+ICD9_STRING
+--
+PHEWAS_CODE
+--
+PHEWAS_STRING
+--
+EXCLUDE_RANGE
+--
+ROLLUP_BOOL  
+--
+IGNORE_BOOL 
+--
+</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>2016</x>
+      <y>1809</y>
+      <w>78</w>
+      <h>39</h>
+    </coordinates>
+    <panel_attributes>TARGET2KEGGPATHWAYS  
+bg=pink
+-
+SOURCE: Therapeutic Target Database (TTD)
+OLDNAME: Target-KEGGpathway.txt
+-
+-
+TTDID              
+--
+KEGG_PATHWAYID   
+--
+KEGG_PATHWAY_NAME 
+--
+
+</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>2016</x>
+      <y>1860</y>
+      <w>78</w>
+      <h>39</h>
+    </coordinates>
+    <panel_attributes>TARGET2WIKIPATHWAYS   
+bg=pink
+-
+SOURCE: Therapeutic Target Database (TTD)
+OLDNAME: Target-Wikipathway.txt
+-
+-
+TTDID                           
+--
+WIKI_PATHWAY_ID
+--
+WIKI_PATHWAY_NAME
+--
+
+</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1947</x>
+      <y>717</y>
+      <w>66</w>
+      <h>78</h>
+    </coordinates>
+    <panel_attributes>DRUG2SIDEEFFECTS   
+style=AutoResize
+-
+SOURCE: SIDER
+OLDNAME: Drug2SideEffects
+bg=gray
+-
+-
+STITCHID_FLAT   
+--
+STITCHID_STEREO
+--
+UMLS 
+--
+TREATMENT       
+--
+FREQUENCY
+--
+FREQUENCY_LB
+--
+FREQUENCY_UP
+--
+TERM_TYPE
+--
+TERM_ID      
+--
+MEDDRA
+--</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>2022</x>
+      <y>1701</y>
+      <w>69</w>
+      <h>78</h>
+    </coordinates>
+    <panel_attributes>TARGET_ONTOLOGY
+-
+SOURCE: TTD
+OLDNAME: TTD_download.txt
+
+-
+-
+TTDID
+-
+Name
+-
+Synonyms
+-
+Disease
+-
+BioChemical Class
+-
+Pathway
+-
+UniProtID
+-
+Drug(s)
+-
+.
+.
+-
+-
+Function
+-
+Sequence
+-
+Inhibitor 
+-
+PDB Structure
+-
+QSAR Model
+-
+EC Number
+-
+Activator
+-
+Antibody
+-
+Blocker
+-
+Modulator
+-
+Stimulator
+-
+UpRegulator
+-
+Inducer
+-
+Ligand
+-
+Suppressor
+-
+Aptamer
+-
+Enhancer
+-
+Cofactor
+-
+Breaker
+-
+Intercalator
+-
+Adduct
+-
+Minor groove binder
+-
+Stablizer
+-
+Opener
+-
+Antisense
+-
+siRNA
+-
+Vaccine
+-
+Regulator
+-
+RNAi
+-
+Antigen
+-
+Antagonist
+-
+Target Validation
+-
+Related US Patent
+-
+Agonist
+-
+Binder
+-
+Multitarget
+-
+bg=pink
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1935</x>
+      <y>555</y>
+      <w>81</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>TTD_CROSSMATCHING
+style=AutoResize
+-
+SOURCE:  TTD
+OLDNAME: TTD_crossmatching.txt
+
+-
+-
+TTDID
+-
+DrugName
+-
+CASNumber
+-
+Formular
+-
+PubchemCID
+-
+PubchemSID
+-
+ChEBIID
+-
+SuperDrugATC
+-
+SuperDrugCAS
+bg=pink</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1872</x>
+      <y>756</y>
+      <w>69</w>
+      <h>21</h>
+    </coordinates>
+    <panel_attributes>bg=orange
+Transform FREQUENCY using 
+WHO categorisation
+-&gt; mean FREQ |-&gt; category
+</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1641</x>
+      <y>63</y>
+      <w>57</w>
+      <h>39</h>
+    </coordinates>
+    <panel_attributes>DRUG2SYNONYMS
+bg=pink
+style=AutoResize
+-
+SOURCE: TTD
+OLDNAME: Synonyms.txt
+-
+--
+TTDDRUGID 
+--
+DRUGNAME
+--
+SYNONYMS  </panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1449</x>
+      <y>123</y>
+      <w>99</w>
+      <h>72</h>
+    </coordinates>
+    <panel_attributes>DRUGSYNONYMSDRUGBANK
+-
+SOURCE: DrugBank
+OLDNAME: DrugSynonymsDrugBank.csv
+-
+-
+DrugBank ID
+-
+Accession Numbers
+-
+Common name
+-
+CAS
+-
+UNII
+-
+Synonyms
+-
+Standard InChI Key
+
+
+fg=black
+bg=blue
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1422</x>
+      <y>153</y>
+      <w>33</w>
+      <h>12</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>10.0;10.0;90.0;20.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1422</x>
+      <y>156</y>
+      <w>33</w>
+      <h>12</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>10.0;20.0;90.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1257</x>
+      <y>147</y>
+      <w>78</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>240.0;10.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1974</x>
+      <y>384</y>
+      <w>114</w>
+      <h>63</h>
+    </coordinates>
+    <panel_attributes>DRUG2INDICATIONS
+style=AutoResize
+bg=#3c7a00
+-
+SOURCE: https://medschool.vanderbilt.edu/
+cpm/center-precision-medicine-blog/
+medi-ensemble-medication-indication-resource
+OLDNAME: MEDI_wPrevalence
+-
+--
+RXCUI_IN 
+--
+DRUG_DESC
+--
+*ICD9*
+--
+ICD9_STR
+--
+HSP
+--
+PREVALENCE </panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1755</x>
+      <y>903</y>
+      <w>99</w>
+      <h>57</h>
+    </coordinates>
+    <panel_attributes>DRUGTARGETSDRUGBANK
+-
+SOURCE: DrugBank
+OLDNAME: DrugTargetsDrugBank.csv
+-
+-
+DrugBank ID
+-
+Name
+-
+Type
+-
+UniProt ID
+-
+UniProt Name
+-
+
+fg=black
+bg=blue
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1398</x>
+      <y>270</y>
+      <w>675</w>
+      <h>219</h>
+    </coordinates>
+    <panel_attributes>DRUG -&gt; INDICATION
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1506</x>
+      <y>507</y>
+      <w>567</w>
+      <h>303</h>
+    </coordinates>
+    <panel_attributes>DRUG -&gt; side effects
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1863</x>
+      <y>1827</y>
+      <w>105</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>TARGET2PATHWAYS   
+style=AutoResize
+-
+-
+TTDID                           
+-
+--
+PATHWAY 
+= c(KEGG_PATHWAY_NAME,WIKI_PATHWAY_NAME)
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1395</x>
+      <y>822</y>
+      <w>681</w>
+      <h>324</h>
+    </coordinates>
+    <panel_attributes>DRUG -&gt; UNIPROT
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1125</x>
+      <y>135</y>
+      <w>108</w>
+      <h>51</h>
+    </coordinates>
+    <panel_attributes>SUBST.PROP.PHARM.RData
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1350</x>
+      <y>141</y>
+      <w>75</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>PATIENTS.DRUGS1
+     
+--
+PROPRIETARYNAME 
+--
+SUBSTANCENAME   
+-
+PHARMCLS1
+-</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1566</x>
+      <y>138</y>
+      <w>30</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>80.0;10.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1698</x>
+      <y>132</y>
+      <w>132</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>PATIENTS.DRUGS3
+style=AutoResize
+--
+SUBSTANCENAME   
+-
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+-
+PHARMCLS1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1662</x>
+      <y>126</y>
+      <w>36</w>
+      <h>18</h>
+    </coordinates>
+    <panel_attributes>bg=orange
+style=AutoResize
+aggregate for
+TTDDRUGID
+matching</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1659</x>
+      <y>150</y>
+      <w>33</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>90.0;10.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1752</x>
+      <y>60</y>
+      <w>75</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>DRUG2SYNONYMS2
+bg=pink
+style=AutoResize
+-
+SOURCE: TTD
+OLDNAME: Synonyms.txt
+-
+--
+TTDDRUGID 
+--
+names = c(DRUGNAME,SYNONYMS)</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1713</x>
+      <y>60</y>
+      <w>36</w>
+      <h>18</h>
+    </coordinates>
+    <panel_attributes>bg=orange
+style=AutoResize
+aggregate for
+TTDDRUGID
+matching</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1701</x>
+      <y>84</y>
+      <w>48</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>140.0;10.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1878</x>
+      <y>108</y>
+      <w>132</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>DRD1
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+SUBSTANCENAME
+--
+PHARMCLS1
+-
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1824</x>
+      <y>90</y>
+      <w>27</w>
+      <h>66</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>20.0;200.0;70.0;90.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1842</x>
+      <y>114</y>
+      <w>30</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>80.0;10.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1599</x>
+      <y>36</y>
+      <w>417</w>
+      <h>153</h>
+    </coordinates>
+    <panel_attributes>SUBSTANCENAME -&gt; TTDDRUGID
+SUBSTANCENAME -&gt; names
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1890</x>
+      <y>285</y>
+      <w>132</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>DRD2
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2202</x>
+      <y>108</y>
+      <w>33</w>
+      <h>381</h>
+    </coordinates>
+    <panel_attributes>fg=blue
+lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>90.0;1250.0;90.0;30.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1890</x>
+      <y>384</y>
+      <w>48</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>DRUG2INDICATIONS2
+style=AutoResize
+bg=#3c7a00
+
+--
+DRUG_DESC
+--
+ICD9
+--
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1944</x>
+      <y>387</y>
+      <w>24</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>bg=orange
+style=AutoResize
+HSP only
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1941</x>
+      <y>405</y>
+      <w>30</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;80.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1533</x>
+      <y>324</y>
+      <w>48</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2indications1
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+ICD9
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1875</x>
+      <y>303</y>
+      <w>21</w>
+      <h>105</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>50.0;330.0;10.0;100.0;50.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1581</x>
+      <y>330</y>
+      <w>303</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;990.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1479</x>
+      <y>366</y>
+      <w>33</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;90.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1632</x>
+      <y>429</y>
+      <w>144</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;460.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1533</x>
+      <y>402</y>
+      <w>117</w>
+      <h>57</h>
+    </coordinates>
+    <panel_attributes>ICD9GROUPING2
+bg=#3c7a00
+style=AutoResize
+-
+SOURCE: https://medschool.vanderbilt.edu/cpm/
+phewas-phenome-wide-association-studies-0
+OLDNAME: ICD9code_translation_updated
+
+-
+--
+ICD9          
+--
+PHEWAS_CODE
+-
+PHEWAS_CODE_Highlevel
+--
+PHEWAS_STRING
+--
+PHEWAS_STRING_Highlevel
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1638</x>
+      <y>411</y>
+      <w>126</w>
+      <h>15</h>
+    </coordinates>
+    <panel_attributes>bg=orange
+style=AutoResize
+layer=1
+PHEWAS_CODE -&gt; PHEWAS_HIGHLEVEL_CODE
+PHEWAS_HIGHLEVEL_CODE -&gt; PHEWAS_HIGHLEVEL_STRING</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1416</x>
+      <y>348</y>
+      <w>45</w>
+      <h>39</h>
+    </coordinates>
+    <panel_attributes>drug2indications
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+PHEWAS_CODE
+-
+PHEWAS_CODE_HL
+--
+PHEWAS_STRING
+--
+PHEWAS_STRING_HL
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1503</x>
+      <y>342</y>
+      <w>36</w>
+      <h>99</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>100.0;310.0;10.0;90.0;100.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2019</x>
+      <y>288</y>
+      <w>213</w>
+      <h>204</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+fg=blue</panel_attributes>
+    <additional_attributes>10.0;10.0;690.0;660.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1752</x>
+      <y>534</y>
+      <w>132</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>drug2sideeffects1
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+-
+SuperDrugATC
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2043</x>
+      <y>483</y>
+      <w>189</w>
+      <h>45</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+fg=blue</panel_attributes>
+    <additional_attributes>10.0;130.0;610.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1947</x>
+      <y>660</y>
+      <w>87</w>
+      <h>45</h>
+    </coordinates>
+    <panel_attributes>DRUGIDS
+style=AutoResize
+-
+SOURCE: STITCH
+OLDNAME: chemical.sources.4.0.tsv
+bg=gray
+-
+--
+FLAT_CHEMICAL
+--
+STEREO_CHEMICAL
+--
+SOURCE_NAME (ATC)
+--
+SOURCE_ID
+--
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1791</x>
+      <y>666</y>
+      <w>111</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>DRUGIDS2
+style=AutoResize
+-
+bg=gray
+
+--
+chemical = c(FLAT_CHEMICAL,STEREO_CHEMICAL)
+--
+ATC
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1905</x>
+      <y>669</y>
+      <w>39</w>
+      <h>15</h>
+    </coordinates>
+    <panel_attributes>bg=orange
+style=AutoResize
+layer=1
+transform
+only ATC Codes</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1911</x>
+      <y>684</y>
+      <w>30</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;80.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1761</x>
+      <y>738</y>
+      <w>111</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>DRUG2SIDEEFFECTS2
+style=AutoResize
+bg=gray
+-
+-
+STITCHID = c(STITCHID_FLAT,STITCHID_STEREO)
+--
+WHO_frequency    
+--
+MEDDRA
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1920</x>
+      <y>522</y>
+      <w>132</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>DRD2
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1908</x>
+      <y>534</y>
+      <w>33</w>
+      <h>57</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>90.0;170.0;10.0;60.0;40.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1890</x>
+      <y>549</y>
+      <w>27</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;70.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1728</x>
+      <y>552</y>
+      <w>213</w>
+      <h>45</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>690.0;130.0;10.0;60.0;80.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1713</x>
+      <y>567</y>
+      <w>24</w>
+      <h>18</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;40.0;60.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1611</x>
+      <y>573</y>
+      <w>111</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2sideeffects2
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+SuperDrugATC = c(SuperDrugATC,SuperDrugATC)
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1884</x>
+      <y>741</y>
+      <w>51</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;150.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1734</x>
+      <y>681</y>
+      <w>63</w>
+      <h>78</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>90.0;240.0;10.0;130.0;190.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1662</x>
+      <y>717</y>
+      <w>48</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>DRUG2SIDEEFFECTS3
+style=AutoResize
+bg=gray
+-
+-
+ATC
+--
+WHO_frequency    
+--
+MEDDRA
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1716</x>
+      <y>717</y>
+      <w>27</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;70.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1518</x>
+      <y>636</y>
+      <w>45</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>drug2sideeffects
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+WHO_frequency    
+--
+MEDDRA
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1581</x>
+      <y>591</y>
+      <w>84</w>
+      <h>144</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>260.0;460.0;10.0;180.0;100.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1563</x>
+      <y>642</y>
+      <w>27</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;70.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1929</x>
+      <y>831</y>
+      <w>132</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>DRD2
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2055</x>
+      <y>486</y>
+      <w>180</w>
+      <h>351</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+fg=blue</panel_attributes>
+    <additional_attributes>10.0;1150.0;580.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1929</x>
+      <y>873</y>
+      <w>81</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>DRUGSYNONYMSDRUGBANK2
+style=AutoResize
+-
+-
+DrugBank ID
+-
+names = c(Common name,Synonyms)
+
+fg=black
+bg=blue
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1755</x>
+      <y>864</y>
+      <w>132</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot1.1
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+-
+DrugBank ID
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1902</x>
+      <y>849</y>
+      <w>33</w>
+      <h>54</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>90.0;160.0;10.0;70.0;90.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1890</x>
+      <y>867</y>
+      <w>21</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;50.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1593</x>
+      <y>867</y>
+      <w>132</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot1.2
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+-
+DrugBank ID
+-
+UniProtID
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1740</x>
+      <y>888</y>
+      <w>21</w>
+      <h>45</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>50.0;130.0;10.0;50.0;50.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1728</x>
+      <y>900</y>
+      <w>21</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;50.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1491</x>
+      <y>927</y>
+      <w>90</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot1.3
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+UniProtID = c(UniProtID,UniProtID)
+-
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1584</x>
+      <y>882</y>
+      <w>177</w>
+      <h>57</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>570.0;170.0;10.0;150.0;30.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1578</x>
+      <y>924</y>
+      <w>15</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;30.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1272</x>
+      <y>987</y>
+      <w>69</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>TARGET_ONTOLOGY
+-
+SOURCE: TTD
+OLDNAME: TTD_download.txt
+
+-
+-
+TTDID
+-
+Name
+-
+Synonyms
+-
+Disease
+-
+BioChemical Class
+-
+Pathway
+-
+UniProtID
+-
+Drug(s)
+-
+.
+.
+-
+-
+Function
+-
+Sequence
+-
+Inhibitor 
+-
+PDB Structure
+-
+QSAR Model
+-
+EC Number
+-
+Activator
+-
+Antibody
+-
+Blocker
+-
+Modulator
+-
+Stimulator
+-
+UpRegulator
+-
+Inducer
+-
+Ligand
+-
+Suppressor
+-
+Aptamer
+-
+Enhancer
+-
+Cofactor
+-
+Breaker
+-
+Intercalator
+-
+Adduct
+-
+Minor groove binder
+-
+Stablizer
+-
+Opener
+-
+Antisense
+-
+siRNA
+-
+Vaccine
+-
+Regulator
+-
+RNAi
+-
+Antigen
+-
+Antagonist
+-
+Target Validation
+-
+Related US Patent
+-
+Agonist
+-
+Binder
+-
+Multitarget
+-
+bg=pink
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>0</x>
+      <y>846</y>
+      <w>177</w>
+      <h>147</h>
+    </coordinates>
+    <panel_attributes>drugfeatures
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1251</x>
+      <y>942</y>
+      <w>90</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+UniProtID = c(UniProtID,UniProtID)
+-
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1161</x>
+      <y>966</y>
+      <w>36</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway1
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+Pathway
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1443</x>
+      <y>1194</y>
+      <w>75</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>bg=green
+
+wiki-pathways via:
+
+drug &gt; uniprot &gt; entrez &gt; wiki ?
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1230</x>
+      <y>957</y>
+      <w>48</w>
+      <h>102</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>140.0;320.0;120.0;300.0;10.0;70.0;70.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1209</x>
+      <y>975</y>
+      <w>30</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;80.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1860</x>
+      <y>1515</y>
+      <w>51</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway.direct
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+Pathway
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2100</x>
+      <y>486</y>
+      <w>135</w>
+      <h>1002</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+fg=blue</panel_attributes>
+    <additional_attributes>10.0;3320.0;120.0;2210.0;390.0;1150.0;430.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLInterface</id>
+    <coordinates>
+      <x>2226</x>
+      <y>480</y>
+      <w>6</w>
+      <h>18</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1851</x>
+      <y>1470</y>
+      <w>267</w>
+      <h>153</h>
+    </coordinates>
+    <panel_attributes>DRUG -&gt; PATHWAY
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>2031</x>
+      <y>1518</y>
+      <w>69</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>TARGET_ONTOLOGY
+-
+SOURCE: TTD
+OLDNAME: TTD_download.txt
+
+-
+-
+TTDID
+-
+Name
+-
+Synonyms
+-
+Disease
+-
+BioChemical Class
+-
+Pathway
+-
+UniProtID
+-
+Drug(s)
+-
+.
+.
+-
+-
+Function
+-
+Sequence
+-
+Inhibitor 
+-
+PDB Structure
+-
+QSAR Model
+-
+EC Number
+-
+Activator
+-
+Antibody
+-
+Blocker
+-
+Modulator
+-
+Stimulator
+-
+UpRegulator
+-
+Inducer
+-
+Ligand
+-
+Suppressor
+-
+Aptamer
+-
+Enhancer
+-
+Cofactor
+-
+Breaker
+-
+Intercalator
+-
+Adduct
+-
+Minor groove binder
+-
+Stablizer
+-
+Opener
+-
+Antisense
+-
+siRNA
+-
+Vaccine
+-
+Regulator
+-
+RNAi
+-
+Antigen
+-
+Antagonist
+-
+Target Validation
+-
+Related US Patent
+-
+Agonist
+-
+Binder
+-
+Multitarget
+-
+bg=pink
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1929</x>
+      <y>1497</y>
+      <w>48</w>
+      <h>66</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>30.0;200.0;10.0;90.0;140.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1971</x>
+      <y>1479</y>
+      <w>132</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>DRD2
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1905</x>
+      <y>1521</y>
+      <w>33</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;90.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1854</x>
+      <y>1650</y>
+      <w>252</w>
+      <h>135</h>
+    </coordinates>
+    <panel_attributes>TTDDRUGID -&gt; TTD
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2088</x>
+      <y>486</y>
+      <w>147</w>
+      <h>1191</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+fg=blue</panel_attributes>
+    <additional_attributes>10.0;3950.0;370.0;2690.0;450.0;1170.0;470.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1959</x>
+      <y>1665</y>
+      <w>132</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>DRD2
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1878</x>
+      <y>1695</y>
+      <w>36</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>TTDDRUGID2TTD
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+TTDID
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>2073</x>
+      <y>108</y>
+      <w>132</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>DRD2
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2007</x>
+      <y>108</y>
+      <w>72</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>220.0;10.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1947</x>
+      <y>1710</y>
+      <w>42</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>TARGET_ONTOLOGY
+style=AutoResize
+bg=pink
+layer=1
+
+-
+-
+TTDID
+-
+Drug(s)</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1998</x>
+      <y>1716</y>
+      <w>21</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;50.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1932</x>
+      <y>1683</y>
+      <w>33</w>
+      <h>60</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>50.0;180.0;10.0;70.0;90.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1917</x>
+      <y>1701</y>
+      <w>24</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;60.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1854</x>
+      <y>1794</y>
+      <w>249</w>
+      <h>135</h>
+    </coordinates>
+    <panel_attributes>TTDID -&gt; PATHWAYS
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1989</x>
+      <y>1830</y>
+      <w>33</w>
+      <h>60</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>90.0;180.0;10.0;70.0;90.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1974</x>
+      <y>1848</y>
+      <w>24</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;60.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1980</x>
+      <y>1059</y>
+      <w>69</w>
+      <h>75</h>
+    </coordinates>
+    <panel_attributes>TARGET_ONTOLOGY
+-
+SOURCE: TTD
+OLDNAME: TTD_download.txt
+
+-
+-
+TTDID
+-
+Name
+-
+Synonyms
+-
+Disease
+-
+BioChemical Class
+-
+Pathway
+-
+UniProtID
+-
+Drug(s)
+-
+.
+.
+-
+-
+Function
+-
+Sequence
+-
+Inhibitor 
+-
+PDB Structure
+-
+QSAR Model
+-
+EC Number
+-
+Activator
+-
+Antibody
+-
+Blocker
+-
+Modulator
+-
+Stimulator
+-
+UpRegulator
+-
+Inducer
+-
+Ligand
+-
+Suppressor
+-
+Aptamer
+-
+Enhancer
+-
+Cofactor
+-
+Breaker
+-
+Intercalator
+-
+Adduct
+-
+Minor groove binder
+-
+Stablizer
+-
+Opener
+-
+Antisense
+-
+siRNA
+-
+Vaccine
+-
+Regulator
+-
+RNAi
+-
+Antigen
+-
+Antagonist
+-
+Target Validation
+-
+Related US Patent
+-
+Agonist
+-
+Binder
+-
+Multitarget
+-
+bg=pink
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1920</x>
+      <y>1020</y>
+      <w>132</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>DRD2
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+names = c(SUBSTANCENAME, PROPRIETARYNAME, Synonyms)
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2049</x>
+      <y>486</y>
+      <w>186</w>
+      <h>540</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+fg=blue</panel_attributes>
+    <additional_attributes>10.0;1780.0;600.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1899</x>
+      <y>1065</y>
+      <w>66</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>TARGET_ONTOLOGY
+-
+SOURCE: TTD
+OLDNAME: TTD_download.txt
+style=AutoResize
+-
+-
+UniProtID
+-
+Drugs
+bg=pink
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1962</x>
+      <y>1065</y>
+      <w>21</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;50.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1824</x>
+      <y>1059</y>
+      <w>42</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot2.1
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+UniProtID
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1878</x>
+      <y>1038</y>
+      <w>48</w>
+      <h>63</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>70.0;190.0;10.0;90.0;140.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1866</x>
+      <y>1062</y>
+      <w>21</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;50.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1479</x>
+      <y>936</y>
+      <w>351</w>
+      <h>144</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>1150.0;460.0;10.0;70.0;40.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1293</x>
+      <y>831</y>
+      <w>57</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+UniProtID (3 sources)
+-
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1470</x>
+      <y>954</y>
+      <w>18</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;40.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>984</x>
+      <y>822</y>
+      <w>390</w>
+      <h>87</h>
+    </coordinates>
+    <panel_attributes>DRUG -&gt; GO
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1293</x>
+      <y>861</y>
+      <w>54</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>uniprot2go
+SOURCE: org.Hs.eg.db
+style=AutoResize
+-
+-
+UNIPROT_ID
+-
+GO_ID
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1416</x>
+      <y>954</y>
+      <w>57</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+UniProtID (3 sources)
+-
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1338</x>
+      <y>942</y>
+      <w>84</w>
+      <h>18</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;260.0;40.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1347</x>
+      <y>834</y>
+      <w>75</w>
+      <h>129</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;230.0;410.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1281</x>
+      <y>1086</y>
+      <w>57</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+UniProtID (3 sources)
+-
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1335</x>
+      <y>957</y>
+      <w>87</w>
+      <h>138</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;440.0;270.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1281</x>
+      <y>1137</y>
+      <w>54</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>uniprot2kegg
+SOURCE: org.Hs.eg.db
+style=AutoResize
+-
+-
+UNIPROT_ID
+-
+KEGG_ID
+
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1269</x>
+      <y>1101</y>
+      <w>18</w>
+      <h>60</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>40.0;180.0;10.0;70.0;40.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1215</x>
+      <y>1116</y>
+      <w>36</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway2
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+KEGG_ID
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1248</x>
+      <y>1119</y>
+      <w>30</w>
+      <h>12</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;20.0;80.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1950</x>
+      <y>936</y>
+      <w>99</w>
+      <h>66</h>
+    </coordinates>
+    <panel_attributes>DRUGSYNONYMSDRUGBANK
+-
+SOURCE: DrugBank
+OLDNAME: DrugSynonymsDrugBank.csv
+-
+-
+DrugBank ID
+-
+Accession Numbers
+-
+Common name
+-
+CAS
+-
+UNII
+-
+Synonyms
+-
+Standard InChI Key
+
+
+fg=black
+bg=blue
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1992</x>
+      <y>909</y>
+      <w>9</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;10.0;70.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1998</x>
+      <y>915</y>
+      <w>54</w>
+      <h>12</h>
+    </coordinates>
+    <panel_attributes>bg=orange
+aggregate drugnames
+
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1233</x>
+      <y>840</y>
+      <w>27</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2GO
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+GO_ID
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1275</x>
+      <y>849</y>
+      <w>24</w>
+      <h>42</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>60.0;120.0;10.0;30.0;60.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1263</x>
+      <y>843</y>
+      <w>21</w>
+      <h>21</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+</panel_attributes>
+    <additional_attributes>10.0;10.0;50.0;50.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1086</x>
+      <y>1107</y>
+      <w>114</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>KEGG_ID2NAME
+style=autoresize
+bg=gray
+-
+SOURCE: http://rest.kegg.jp/list/pathway/hsa
+
+-
+--
+KEGG_PATH
+-
+KEGG_ID
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1023</x>
+      <y>1113</y>
+      <w>36</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway2
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+KEGG_PATH
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1059</x>
+      <y>1116</y>
+      <w>27</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;70.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1197</x>
+      <y>1131</y>
+      <w>24</w>
+      <h>12</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>10.0;20.0;60.0;20.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1083</x>
+      <y>834</y>
+      <w>141</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>GOID2GONAME
+layer=1
+style=autoresize
+bg=gray
+-
+SOURCE: http://geneontology.org/page/download-ontology
+OLDNAME: go-basic.obo.txt
+-
+--
+GO_ID
+-
+GO_NAME</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1221</x>
+      <y>852</y>
+      <w>18</w>
+      <h>12</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>10.0;20.0;40.0;20.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1014</x>
+      <y>837</y>
+      <w>27</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2GO
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+GO_NAME
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1059</x>
+      <y>846</y>
+      <w>24</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;60.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>852</x>
+      <y>924</y>
+      <w>504</w>
+      <h>429</h>
+    </coordinates>
+    <panel_attributes>UNIPROT -&gt; Pathway
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>579</x>
+      <y>810</y>
+      <w>63</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>fi.drug2indications
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+PHEWAS_STRING
+-
+PHEWAS_STRING_Highlevel
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>639</x>
+      <y>351</y>
+      <w>783</w>
+      <h>468</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;1540.0;2590.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>603</x>
+      <y>945</y>
+      <w>30</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>fi.drug2GO
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+GO_NAME
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>630</x>
+      <y>837</y>
+      <w>390</w>
+      <h>117</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;370.0;1280.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>624</x>
+      <y>0</y>
+      <w>1431</w>
+      <h>768</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+</panel_attributes>
+    <additional_attributes>10.0;2540.0;830.0;1950.0;1820.0;20.0;4750.0;20.0;4720.0;340.0;4620.0;380.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>591</x>
+      <y>762</y>
+      <w>36</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>fi.DRD1
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+SUBSTANCENAME
+-
+PHARMCLS1
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1764</x>
+      <y>1635</y>
+      <w>348</w>
+      <h>300</h>
+    </coordinates>
+    <panel_attributes>DRUG -&gt; TARGET -&gt; PATHWAY
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1776</x>
+      <y>1764</y>
+      <w>51</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway.target
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+PATHWAY_NAME 
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1836</x>
+      <y>1704</y>
+      <w>48</w>
+      <h>144</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>90.0;460.0;10.0;230.0;140.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1824</x>
+      <y>1770</y>
+      <w>21</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;50.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>675</x>
+      <y>1338</y>
+      <w>147</w>
+      <h>135</h>
+    </coordinates>
+    <panel_attributes>Pathway Pool
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>792</x>
+      <y>1386</y>
+      <w>1074</w>
+      <h>141</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;3560.0;450.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>807</x>
+      <y>1422</y>
+      <w>975</w>
+      <h>354</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;270.0;110.0;3230.0;1160.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>756</x>
+      <y>1350</y>
+      <w>54</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway.uniprot
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+Pathway
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>756</x>
+      <y>1389</y>
+      <w>51</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway.direct
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+PATHWAY_NAME 
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>870</x>
+      <y>1206</y>
+      <w>54</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway.uniprot
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+KEGG_PATH
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1011</x>
+      <y>975</y>
+      <w>156</w>
+      <h>156</h>
+    </coordinates>
+    <panel_attributes/>
+    <additional_attributes>40.0;500.0;10.0;370.0;500.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>993</x>
+      <y>1083</y>
+      <w>27</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;70.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>807</x>
+      <y>1206</y>
+      <w>69</w>
+      <h>153</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;490.0;210.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>759</x>
+      <y>1419</y>
+      <w>51</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway.target
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+PATHWAY_NAME 
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>690</x>
+      <y>1389</y>
+      <w>33</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+Pathway
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>723</x>
+      <y>1404</y>
+      <w>27</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;70.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>726</x>
+      <y>1392</y>
+      <w>27</w>
+      <h>12</h>
+    </coordinates>
+    <panel_attributes>bg=orange
+aggregate 
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>594</x>
+      <y>981</y>
+      <w>42</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>fi.drug2pathway
+style=AutoResize
+-
+-
+TTDDRUGID 
+--
+Pathway
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>633</x>
+      <y>984</y>
+      <w>63</w>
+      <h>414</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;190.0;10.0;190.0;1360.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>231</x>
+      <y>753</y>
+      <w>180</w>
+      <h>309</h>
+    </coordinates>
+    <panel_attributes>Feature Pool output
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>174</x>
+      <y>903</y>
+      <w>63</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;190.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>636</x>
+      <y>636</y>
+      <w>888</w>
+      <h>261</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;850.0;2940.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>588</x>
+      <y>891</y>
+      <w>51</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>fi.drug2sideeffects
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+SIDEEFFECTS
+-
+WHO_frequency    
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1347</x>
+      <y>99</y>
+      <w>234</w>
+      <h>99</h>
+    </coordinates>
+    <panel_attributes>add synonyms
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>1239</x>
+      <y>156</y>
+      <w>105</w>
+      <h>15</h>
+    </coordinates>
+    <panel_attributes>layer=1
+bg=orange
+style=AutoResize
+omit emtpy PHARMCLS1 entries,
+if drug has at least an non-empty  entry</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1938</x>
+      <y>1527</y>
+      <w>75</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>TARGET_ONTOLOGY
+-
+SOURCE: TTD
+OLDNAME: TTD_download.txt
+style=AutoResize
+-
+-
+Pathway
+-
+names = c(Drug(s), Synonyms)
+bg=pink
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>2010</x>
+      <y>1518</y>
+      <w>27</w>
+      <h>15</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;30.0;70.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>63</x>
+      <y>879</y>
+      <w>45</w>
+      <h>51</h>
+    </coordinates>
+    <panel_attributes>DRUGDESCRIPTORS
+style=AutoResize
+-
+-
+SUBSTANCENAME
+--
+PHARMCLS1
+-
+PHEWAS_STRING
+-
+PHEWAS_STRING_HL
+-
+SIDEEFFECTS
+-
+GO_NAME
+-
+Pathway
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>336</x>
+      <y>765</y>
+      <w>36</w>
+      <h>21</h>
+    </coordinates>
+    <panel_attributes>fo.DRD1
+style=AutoResize
+-
+SUBSTANCENAME
+-
+PHARMCLS1
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>336</x>
+      <y>801</y>
+      <w>57</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>fo.drug2indications.1
+style=AutoResize
+-
+-
+SUBSTANCENAME
+--
+PHEWAS_STRING
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>336</x>
+      <y>831</y>
+      <w>57</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>fo.drug2indications.2
+style=AutoResize
+-
+-
+SUBSTANCENAME
+--
+PHEWAS_STRING_HL
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>336</x>
+      <y>900</y>
+      <w>36</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>fo.drug2GO
+style=AutoResize
+-
+-
+SUBSTANCENAME
+-
+GO_NAME
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>336</x>
+      <y>930</y>
+      <w>42</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>fo.drug2pathway
+style=AutoResize
+-
+-
+SUBSTANCENAME 
+--
+Pathway
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>435</x>
+      <y>750</y>
+      <w>225</w>
+      <h>309</h>
+    </coordinates>
+    <panel_attributes>Feature Pool input
+
+bg=light_gray
+layer=0</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>408</x>
+      <y>903</y>
+      <w>33</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;90.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>525</x>
+      <y>759</y>
+      <w>54</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>bg=yellow
+style=AutoResize
+layer=1
+
+|featureName   |   n|
+|:-------------|---:|
+|SUBSTANCENAME | 204|
+|TTDDRUGID     | 245|
+|PHARMCLS1     | 110|</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>273</x>
+      <y>762</y>
+      <w>54</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>bg=yellow
+style=AutoResize
+layer=1
+
+|featureName   |   n|
+|:-------------|---:|
+|SUBSTANCENAME | 911|
+|PHARMCLS1     | 309|</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>264</x>
+      <y>798</y>
+      <w>63</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>bg=yellow
+style=AutoResize
+layer=1
+
+|featureName      |   n|
+|:----------------|---:|
+|PHEWAS_STRING_HL | 394|
+|SUBSTANCENAME    | 742|</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>273</x>
+      <y>831</y>
+      <w>54</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>bg=yellow
+style=AutoResize
+layer=1
+
+|featureName   |   n|
+|:-------------|---:|
+|PHEWAS_STRING | 872|
+|SUBSTANCENAME | 742|</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>273</x>
+      <y>864</y>
+      <w>57</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>bg=yellow
+style=autoresize
+layer=1
+
+|featureName   |    n|
+|:-------------|----:|
+|SIDEEFFECTS   | 1733|
+|WHO           |    5|
+|SUBSTANCENAME |  559|</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>270</x>
+      <y>897</y>
+      <w>57</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>bg=yellow
+style=autoresize
+layer=1
+
+|featureName   |    n|
+|:-------------|----:|
+|GO            | 3319|
+|SUBSTANCENAME |  643|</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>273</x>
+      <y>930</y>
+      <w>54</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>bg=yellow
+style=autoresize
+layer=1
+
+|featureName   |   n|
+|:-------------|---:|
+|PATHWAY       | 644|
+|SUBSTANCENAME | 661|</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>933</x>
+      <y>936</y>
+      <w>414</w>
+      <h>234</h>
+    </coordinates>
+    <panel_attributes>KEGG
+
+bg=light_gray
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1023</x>
+      <y>1176</y>
+      <w>324</w>
+      <h>174</h>
+    </coordinates>
+    <panel_attributes>KEGG
+
+bg=light_gray
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1284</x>
+      <y>1224</y>
+      <w>54</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>uniprot2entrez
+SOURCE: org.Hs.eg.db
+style=AutoResize
+layer=2
+-
+-
+UNIPROT_ID
+-
+ENTREZ</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1284</x>
+      <y>1182</y>
+      <w>57</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2uniprot
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+UniProtID (3 sources)
+-
+layer=2</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1338</x>
+      <y>957</y>
+      <w>84</w>
+      <h>231</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;750.0;260.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1113</x>
+      <y>1239</y>
+      <w>144</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>entrez2wiki
+style=AutoResize
+SOURCE: http://data.wikipathways.org/current/gmt/
+OLDNAME: wikipathways-20161210-gmt-Homo_sapiens.gmt.txt
+-
+-
+PATHWAY
+-
+ENTREZID
+layer=2</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1200</x>
+      <y>1197</y>
+      <w>54</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>drug2entrez
+SOURCE: org.Hs.eg.db
+style=AutoResize
+layer=2
+-
+-
+TTDDRUGID
+-
+ENTREZ</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1275</x>
+      <y>1197</y>
+      <w>15</w>
+      <h>51</h>
+    </coordinates>
+    <panel_attributes>
+layer=2</panel_attributes>
+    <additional_attributes>30.0;150.0;10.0;70.0;30.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1251</x>
+      <y>1197</y>
+      <w>33</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+layer=2</panel_attributes>
+    <additional_attributes>10.0;10.0;90.0;70.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1092</x>
+      <y>1218</y>
+      <w>114</w>
+      <h>54</h>
+    </coordinates>
+    <panel_attributes>
+layer=2</panel_attributes>
+    <additional_attributes>70.0;160.0;10.0;30.0;360.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>1083</x>
+      <y>1224</y>
+      <w>18</w>
+      <h>9</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-
+layer=2</panel_attributes>
+    <additional_attributes>10.0;10.0;40.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1032</x>
+      <y>1224</y>
+      <w>48</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway.wiki
+style=AutoResize
+layer=2
+-
+-
+TTDDRUGID
+-
+PATHWAY</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>948</x>
+      <y>1086</y>
+      <w>48</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>drug2pathway.kegg
+style=AutoResize
+-
+-
+TTDDRUGID 
+-
+KEGG_PATH
+layer=2</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>921</x>
+      <y>1086</y>
+      <w>33</w>
+      <h>126</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;400.0;90.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>921</x>
+      <y>1206</y>
+      <w>117</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;370.0;60.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>336</x>
+      <y>867</y>
+      <w>57</w>
+      <h>24</h>
+    </coordinates>
+    <panel_attributes>fo.drug2sideeffects
+style=AutoResize
+-
+-
+SUBSTANCENAME
+-
+MEDDRA::WHO_frequency    
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLNote</id>
+    <coordinates>
+      <x>117</x>
+      <y>879</y>
+      <w>51</w>
+      <h>27</h>
+    </coordinates>
+    <panel_attributes>bg=yellow
+style=AutoResize
+layer=1
+
+|class      |    n|
+|:----------|----:|
+|substances |  911|
+|features   | 7272|</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>1146</x>
+      <y>147</y>
+      <w>75</w>
+      <h>33</h>
+    </coordinates>
+    <panel_attributes>PATIENTS.DRUGS1
+     
+--
+PROPRIETARYNAME 
+--
+SUBSTANCENAME   
+-
+PHARMCLS1
+-
+layer=1</panel_attributes>
+    <additional_attributes/>
+  </element>
+</diagram>
