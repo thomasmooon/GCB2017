@@ -1,21 +1,21 @@
 ---
 title: "prevalence and incidence of Main-co-morbidities"
-subtitle: "children (AGE <= 16), patients with incident Main-CM only"
+subtitle: "children (AGE <= 16), patients with incident Main-CM only, new IXDAYS"
 author: "Thomas Gerlach"
-date: "2017 JAN 19"
+date: "2017 FEB 14"
 output: html_notebook
 ---
 
 
 ```{r setup, include=FALSE, echo = FALSE }
 # set knitr defaults
-rm(list=setdiff(ls(),"TABLE04SAS7BDAT"))
-knitr::opts_chunk$set(echo = TRUE, fig.width=20, fig.height=15)
+rm(list=setdiff(ls(),"TABLE04.2"))
+knitr::opts_chunk$set(echo = TRUE, fig.width=10, fig.height=7)
 source("z_start.R") # initalize netezza DB, load core data
 
-if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
-PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
-PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT, cohort = "children")
+if(!exists("TABLE04.2")) load("data/patches/TABLE04.2.RData")
+PATIENTS_AGE_REGION <- TABLE04.2
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION.T2(TABLE04.2, cohort = "children")
 # # aggregate AED SUBSTANCENAME's
 PATIENTS_AGE_REGION <- aggregate_AED_substancenames(PATIENTS_AGE_REGION)
 ```
@@ -42,7 +42,7 @@ ggplot(patPerAED, aes(x=reorder(SUBSTANCENAME,-n), y=n/nPat$n)) +
   geom_bar(stat="identity") +
   coord_flip() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle(paste("AED frequency \nAGE >= 18,",nPat$n,"patients")) + 
+  ggtitle(paste("AED frequency \nAGE <= 16,",nPat$n,"patients")) + 
   xlab("SUBSTANCENAME") + 
   ylab("% population") +  geom_text(aes(label=n), vjust=0, hjust=-1) +
   scale_y_continuous(labels = scales::percent) +
@@ -65,7 +65,7 @@ p1 <-
   ggplot(nPat_byAED, aes(x=reorder(SUBSTANCENAME,-n), y=n/nPat$n)) + 
   geom_bar(stat="identity") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ggtitle("Distribution all AEDs \n AGE >= 18") + 
+  ggtitle("Distribution all AEDs \n AGE <= 16") + 
   xlab("SUBSTANCENAME") + 
   ylab("% population") +  
   geom_text(aes(label=n), vjust=0) +
@@ -73,7 +73,7 @@ p1 <-
 
 
 # age distribution, all AEDs
-title <- paste("AGE histogram \n all AEDs, AGE >= 18")
+title <- paste("AGE histogram \n all AEDs, AGE <= 16")
 p2 <-
   ggplot(PATIENTS_AGE_REGION %>% dplyr::select(ENROLID, AGE) %>% distinct(), aes(AGE)) +
   geom_histogram(aes(y = ..density..), bins = 100) +
@@ -129,7 +129,7 @@ inc.unspec <-
   dplyr::select(ENROLID) %>%  # incident patients
   distinct() %>% 
   tally() %>% 
-  rename(sum.prevalent = n)
+  rename(sum.incident = n)
 
 # count incident patients by MC
 inc.allAEDs <- 
@@ -153,7 +153,10 @@ prev.vs.inc <- within(prev.vs.inc, percent.incident <- round(n.incident/n.preval
 prev.vs.inc <- prev.vs.inc[order(-prev.vs.inc$n.prevalent),]
 row.names(prev.vs.inc) <- c()
 
-cat("Sum of incident patients: ", inc.unspec$sum.prevalent,"\n\n")
+sum.prevalent <- PATIENTS_AGE_REGION %>%  filter(MAIN.COMORB != "") %>% select(ENROLID) %>% distinct() %>% tally()
+cat("Sum of prevalent patients: ", sum.prevalent$n,"\n\n") #############################################################
+
+cat("Sum of incident patients: ", inc.unspec$sum.incident,"\n\n")
 
 cat("Incidence rates per main-comorbidity:")
 knitr::kable(prev.vs.inc)
@@ -413,5 +416,29 @@ ggplot(prev.vs.inc.byAED.top10, aes(x = MAIN.COMORB, y=percent.incident, fill=ex
   ylim(0,1) +
   geom_text(aes(label=paste(percent.incident*100,"% =",n.incident,"/",n.prevalent)), hjust=-0.1) +
   coord_flip()
+```
+
+
+test for signifikant difference in incidence frequency by AED (top 10 only)
+```{r}
+prev.vs.inc.byAED.top10$n.prevalent <- as.numeric(prev.vs.inc.byAED.top10$n.prevalent)
+prev.vs.inc.byAED.top10$n.incident <- as.numeric(prev.vs.inc.byAED.top10$n.incident)
+prev.vs.inc.byAED.top10$n.nonInc <- prev.vs.inc.byAED.top10$n.prevalent - prev.vs.inc.byAED.top10$n.incident
+
+chi.table <- prev.vs.inc.byAED.top10 %>% select(MAIN.COMORB,AED,n.incident,n.nonInc)
+library(data.table)
+setDT(chi.table)
+chi.table.x <- gather(chi.table, key = "cond", value = "n", 3:4)
+chi.table.x <- dcast(chi.table.x, MAIN.COMORB + cond ~ AED, value.var = "n")
+
+m <- unique(chi.table.x$MAIN.COMORB)
+c.test <- c()
+for(mm in m){
+tmp <- chisq.test(chi.table.x %>%  filter(MAIN.COMORB == mm) %>% select(-MAIN.COMORB,-cond))
+c.test <- c(c.test, tmp$p.value)
+}
+
+knitr::kable(data.frame(mainComorb=m, chisqTest.pval=c.test))
+
 ```
 

@@ -1,12 +1,13 @@
 ---
 title: "descriptive statistics of children (AGE <= 16)"
+subtitle: "newIXDAYS"
 output: html_notebook
-date: "2017 JAN 19"
+date: "2017 FEB 16"
 ---
 
 # setup global variables
 ```{r, echo = FALSE, include = FALSE}
-rm(list=setdiff(ls(),"TABLE04SAS7BDAT"))
+rm(list=setdiff(ls(),"TABLE04.2"))
 knitr::opts_chunk$set(
   warning = FALSE,
   fig.width = 10,
@@ -26,18 +27,18 @@ params$EPILEPSY <-
   "Generalized convulsive epilepsy"
   )
 
-if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
+if(!exists("TABLE04.2")) load("data/patches/TABLE04.2.RData")
 
-PATIENTS_AGE_REGION <- 
-  TABLE04SAS7BDAT %>% 
-  select(-EVTDATE, -MHSAFL, -HOSPFL, -NDCNUM, -(PHARMCLS2:PHARMCLS5), - THERCLS, -THERGRP)
-
-newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
-PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
-rm(newIXDAYS)
+PATIENTS_AGE_REGION <-  TABLE04.2 
+PATIENTS_AGE_REGION$IXDAYS <- as.numeric(PATIENTS_AGE_REGION$IXDAYS)
 ```  
 
-# filter PATIENTS 
+before any filtering has been done retrieve individual observation timeframe
+```{r}
+load("data/patches/enrol.MH.RData")
+enrol.MH  <- enrol.MH %>% filter(medicalHistory >= 2*365)
+```
+
 
 ```{r, include = FALSE}
 
@@ -56,7 +57,6 @@ nPatObsCounter <- function(y) {
 }
 
 source("functions/n_patient_per_period.R")
-source("functions/patient_monthly_enrolment.R")
 source("functions/patient_nonNegative_DAYSUPP.R")
 source("functions/setAEDFlag.R")
 source("functions/aggregate_AED_substancenames.R")
@@ -70,17 +70,7 @@ PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
 PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
 # match PHEWAS terms to ICD9 terms
 PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
-# health insurance class
-load("data/monthly_enrolment.RData")
-monthly_enrolment <-  
-  monthly_enrolment %>% 
-  select(ENROLID, db) %>% 
-  distinct() %>% 
-  mutate(insur = ifelse(db == "CCAE/MDCR", "premium", "basic")) %>% 
-  select(-db) %>% 
-  as_tibble()
-monthly_enrolment$ENROLID <- as.numeric(monthly_enrolment$ENROLID)
-PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION,monthly_enrolment)
+
 
 # filter
 ########
@@ -88,8 +78,11 @@ patObsCount <- nPatObsCounter(NULL)
 patObsCount$addCount(PATIENTS_AGE_REGION,"unconstraint")
 
 # Keep only patients within valid time period 
-PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
-patObsCount$addCount(PATIENTS_AGE_REGION,"2y MH")
+load("data/patches/enrol.MH.RData")
+enrol.MH <- enrol.MH %>% filter(medicalHistory >= 2*365) %>% select(ENROLID)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% enrol.MH$ENROLID)
+rm(enrol.MH)
+patObsCount$addCount(PATIENTS_AGE_REGION,"2y MH + 1 quarter FU")
 
 # only patients with non-negative DAYSUP
 PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
@@ -112,8 +105,10 @@ PATIENTS_AGE_REGION <-
 
 patObsCount$addCount(PATIENTS_AGE_REGION,"AED treatment")
 
+## add main comorbidities
 PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "children")
 
+#
 PATIENTS_AGE_REGION <- unique(PATIENTS_AGE_REGION)
 ```
 
@@ -245,7 +240,7 @@ cat("The sum of patients within a comorbidity is NOT the sum of patients in the 
 ```{r, warning=FALSE}
 # 2. plot number of patients with incident main-comorbidity occurrence as a function of <buffer.int>-time
 #########################################################################################################
-buffer.int <- 1:365
+buffer.int <- 1 : max(main.comorb.first.ixday$IXDAYS)
 
 # summarised over all patients
 ##############################
@@ -256,9 +251,9 @@ x <-
       buffer.int)
     )
 
-x <- as.data.frame(cbind(buffer.int, x))
+all.incident <- as.data.frame(cbind(buffer.int, x))
 
-ggplot(x, aes(buffer.int, x)) +
+ggplot(all.incident, aes(buffer.int, x)) +
   geom_line(aes(y = x, colour = "sum") ) +
   ggtitle("Number of patients with new main-comorbidities at time >= IXDAYS \n summarized over all main-comorbidities") +
   xlab("IXDAYS")
@@ -299,6 +294,216 @@ mc.inc180 <- mc.inc180[order(-mc.inc180$n.incident),]
 row.names(mc.inc180) <- c()
 knitr::kable(mc.inc180 )
 ```
+
+### incidence in % of population by time
+```{r}
+n_distinct(PATIENTS_AGE_REGION$ENROLID) # (patients with AED treatment)
+
+# get max IXDAY per patient
+pat.maxIxdays <- 
+  PATIENTS_AGE_REGION %>% dplyr::select(ENROLID, IXDAYS) %>% distinct() %>% 
+  group_by(ENROLID) %>% mutate(maxIXDAYS = max(IXDAYS)) %>% ungroup() %>% 
+  dplyr::select(-IXDAYS) %>% distinct()
+
+# plot number of patients by time
+min(pat.maxIxdays$maxIXDAYS)
+t <- 0:max(pat.maxIxdays$maxIXDAYS)
+t.pop <- sapply(t, function(x) sum(pat.maxIxdays$maxIXDAYS >= x))
+t.pop <- data.frame(IXDAYS = t, popsize = t.pop)
+
+ggplot(t.pop, aes(IXDAYS, popsize)) +
+  geom_line() +
+  ggtitle("popsize by time") +
+  xlab("IXDAYS") +
+  geom_vline(xintercept = 90, linetype = "longdash") +
+  theme(panel.background = element_rect(fill = "grey"))
+
+# plot percent of incident patients relative to total patients available at that time
+all.incident.normalized <- all.incident %>% dplyr::rename(n.incident = x)
+row.names(all.incident.normalized) <- c()
+all.incident.normalized <- left_join(all.incident.normalized, t.pop, by = c("buffer.int" = "IXDAYS"))
+all.incident.normalized <- all.incident.normalized %>% mutate(n.incident.per1000 = n.incident / popsize)
+
+ggplot(all.incident.normalized, aes(buffer.int, n.incident.per1000)) +
+  geom_line(aes(colour = "fraction"))  +
+  ggtitle("incidence in % of population by time \n all main-comorbidities") +
+  xlab("IXDAYS") +
+  geom_vline(xintercept = 90, linetype = "longdash") +
+  theme(panel.background = element_rect(fill = "grey"))
+
+# plot percent of incident patients relative to total patients available at that time
+# by MC
+first.ixdays.vs.buffer.normalized <- first.ixdays.vs.buffer %>% left_join(t.pop,  by = c("buffer" = "IXDAYS"))
+first.ixdays.vs.buffer.normalized[,-c(1,ncol(first.ixdays.vs.buffer.normalized))] <- 
+  first.ixdays.vs.buffer.normalized[,-c(1,ncol(first.ixdays.vs.buffer.normalized))] / first.ixdays.vs.buffer.normalized$popsize
+
+ggplot(first.ixdays.vs.buffer.normalized, aes(buffer.int)) +
+  geom_line(aes(y = ADHD, colour = "ADHD") ) +
+  geom_line(aes(y= Autism, colour = "Autism")) +
+  geom_line(aes(y= Migraine, colour =  "Migraine")) +
+  geom_line(aes(y= Developmental.delays.and.disorders, colour = "Developmental.delays.and.disorders")) + 
+  geom_line(aes(y= Anxiety, colour = "Anxiety")) +
+  geom_line(aes(y= Depression, colour = "Depression")) +
+  ggtitle("Number of patients with new main-comorbidities at time >= IXDAYS \n by main-comorbidity") +
+  xlab("IXDAYS")
+
+```
+
+# treatment difference for incidence patients in medical history
+
+
+plot only, stratified by MC
+```{r, fig.height=10, fig.width=10}
+library(data.table)
+# sum of patients per main comorbidity
+mc.inc180
+
+# number of patients by MC, by AED
+GetAEDsPerMC <- function(x) {
+  PATIENTS_AGE_REGION %>%
+  filter(ENROLID %in% x, IXDAYS >= -2*365, IXDAYS <= 90, isAED == TRUE) %>% # medical history of AED treatment
+  dplyr::select(ENROLID, SUBSTANCENAME) %>% distinct() %>% group_by(SUBSTANCENAME) %>% tally()
+}
+
+aedsPerMC        <- lapply(MAIN.COMORB, FUN = function(x) GetAEDsPerMC(main.comorb.first.ixday.inc$ENROLID[main.comorb.first.ixday.inc$MAIN.COMORB == x]))
+names(aedsPerMC) <- MAIN.COMORB
+aedsPerMC        <- do.call(rbind, lapply(aedsPerMC, data.frame, stringsAsFactors=FALSE)) # list to df
+
+# add column with main-comorbidity
+MC               <- do.call(rbind, strsplit(row.names(aedsPerMC), split = "\\."))[,1]
+MC               <- gsub("Stroke","Stroke.IschemAttack", MC)
+row.names(aedsPerMC) <- c()
+aedsPerMC$MC         <- MC
+
+# add incident popsize for particular MC
+aedsPerMC <- aedsPerMC %>% dplyr::rename(n.treated = n)
+
+# spread and gather again to connect each MC with each AED and set missings to 0 (therefore if NA n.treated will be transformed to 0)
+x         <- spread(aedsPerMC, MC, n.treated, fill = 0)
+aedsPerMC <- gather(x, key = "MC", value = "n.treated", 2:ncol(x) )
+aedsPerMC <- aedsPerMC %>% left_join(mc.inc180)
+
+# get non-treated frequency = n.incident - n.treated
+aedsPerMC$n.notTreated <- aedsPerMC$n.incident - aedsPerMC$n.treated
+aedsPerMC$n.incident <- c()
+
+# reshape to contingency table
+aedsPerMC <- gather(aedsPerMC, key = "cond", "n",c(3,4))
+setDT(aedsPerMC)
+aedsPerMC.t <- dcast(aedsPerMC, MC + cond ~ SUBSTANCENAME, value.var = "n", fill = 0)
+
+
+# plot
+#######
+# reshape aedsPerMC.t for ggplot
+x1 <- gather(aedsPerMC.t, "AED","n",3:ncol(aedsPerMC.t))
+x2 <- spread(x1, cond, n)
+x2$percentTreated <- round( x2$n.treated / x2$n.notTreated, 2) * 100
+
+x2$n.incident <- x2$chisqTest.pval <- c()
+
+ggplot(x2, aes(x = AED, y=percentTreated)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~ MC,nrow = 3) +
+  theme(plot.title = element_text(size=10)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("treatment patterns of incident patients in medical history [-2y,+3months]") +
+  xlab("treatment") + ylab("% of incident population") +
+  guides(fill=guide_legend(ncol=1)) +
+  ylim(c(0,100)) +
+  geom_hline(yintercept = 100, linetype = "longdash", colour = "grey") +
+  # geom_text(aes(label=paste(percentTreated,"% =",n.treated,"/",n.notTreated)), hjust=-0.5, size = 3) +
+  coord_flip()
+```
+
+
+## stratified by AED,  chisq-test and  plot
+```{r}
+library(data.table)
+
+# sum of patients per main comorbidity
+mc.inc180
+
+# number of patients by MC, by AED
+GetAEDsPerMC <- function(x) {
+  PATIENTS_AGE_REGION %>% 
+  filter(ENROLID %in% x, IXDAYS >= -2*365, IXDAYS <= 90, isAED == TRUE) %>% # medical history of AED treatment
+  dplyr::select(ENROLID, SUBSTANCENAME) %>% distinct() %>% group_by(SUBSTANCENAME) %>% tally()
+}
+
+aedsPerMC        <- lapply(MAIN.COMORB, FUN = function(x) GetAEDsPerMC(main.comorb.first.ixday.inc$ENROLID[main.comorb.first.ixday.inc$MAIN.COMORB == x]))
+names(aedsPerMC) <- MAIN.COMORB
+aedsPerMC        <- do.call(rbind, lapply(aedsPerMC, data.frame, stringsAsFactors=FALSE)) # list to df
+
+# add column with main-comorbidity
+MC               <- do.call(rbind, strsplit(row.names(aedsPerMC), split = "\\."))[,1]
+MC               <- gsub("Developmental","Developmental.delays.and.disorders", MC)
+row.names(aedsPerMC) <- c()
+aedsPerMC$MC         <- MC
+
+# add incident popsize for particular MC
+aedsPerMC <- aedsPerMC %>% dplyr::rename(n.treated = n)
+
+# spread and gather again to connect each MC with each AED and set missings to 0 (therefore if NA n.treated will be transformed to 0)
+x         <- spread(aedsPerMC, MC, n.treated, fill = 0)
+aedsPerMC <- gather(x, key = "MC", value = "n.treated", 2:ncol(x) )
+aedsPerMC <- aedsPerMC %>% left_join(mc.inc180)
+
+# get non-treated frequency = n.incident - n.treated
+aedsPerMC$n.notTreated <- aedsPerMC$n.incident - aedsPerMC$n.treated
+aedsPerMC$n.incident <- c()
+
+# reshape to contingency table
+aedsPerMC <- gather(aedsPerMC, key = "cond", "n",c(3,4))
+setDT(aedsPerMC)
+aedsPerMC.t <- dcast(aedsPerMC, SUBSTANCENAME + cond ~ MC, value.var = "n", fill = 0)
+
+
+# chisq test all AEDs
+#####################
+cat("------------------------------\n")
+cat("chisq test all AEDs \n")
+s <- unique(aedsPerMC.t$SUBSTANCENAME)
+c.test <- c()
+for(ss in s){
+tmp <- chisq.test(setDF(aedsPerMC.t) %>%  filter(SUBSTANCENAME == ss) %>% dplyr::select(-SUBSTANCENAME,-cond))
+c.test <- c(c.test, tmp$p.value)
+}
+
+chisq.test.pval <- data.frame(AED=s, chisqTest.pval=c.test)
+knitr::kable(chisq.test.pval)
+
+cat("global test \n")
+chisq.test(aedsPerMC.t[,3:ncol(aedsPerMC.t)])
+```
+
+## plot results
+```{r, fig.height=10, fig.width=12}
+
+# reshape aedsPerMC.t for ggplot
+x1 <- gather(aedsPerMC.t, "MC","n",3:ncol(aedsPerMC.t))
+x2 <- spread(x1, cond, n)
+x2$percentTreated <- round( x2$n.treated / x2$n.notTreated, 2) * 100
+
+# bind nPatients to column MC for title
+x2 <- x2 %>% left_join(chisq.test.pval, by = c("SUBSTANCENAME" = "AED"))
+x2$SUBSTANCENAME <- paste(x2$SUBSTANCENAME, "\n -log10 pval = ", round(-log10(x2$chisqTest.pval),1), sep = "")
+x2$n.incident <- x2$chisqTest.pval <- c()
+
+ggplot(x2, aes(x = MC, y=percentTreated)) + 
+  geom_bar(stat="identity") + 
+  facet_wrap(~ SUBSTANCENAME,nrow = 3) +
+  theme(plot.title = element_text(size=10)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("treatment patterns of incident patients in medical history [-2y,+3months]") +
+  xlab("treatment") + ylab("% of incident population") +
+  guides(fill=guide_legend(ncol=1)) +
+  ylim(c(0,100)) + 
+  geom_hline(yintercept = 100, linetype = "longdash", colour = "grey") +
+  geom_text(aes(label=paste(percentTreated,"% =",n.treated,"/",n.notTreated)), hjust=-0.5, size = 3) +
+  coord_flip()
+```
+
 
 # patient frequency by filter criterium
 ```{r}

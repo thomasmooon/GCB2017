@@ -199,7 +199,7 @@ FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, sparse = FALSE, cohort =
 FILTER_PATIENTS_AGE_REGION.T2 <- function(x, cohort = "adult") {
 
   # *.T2 consider patched TABLE04.T2 with corrected IXDAYS
-    
+  
   source("functions/n_patient_per_period.R")
   source("functions/patient_monthly_enrolment.R")
   source("functions/patient_nonNegative_DAYSUPP.R")
@@ -213,7 +213,7 @@ FILTER_PATIENTS_AGE_REGION.T2 <- function(x, cohort = "adult") {
   # Keep only patients within valid time period 
   
   load("data/patches/enrol.MH.RData")
-  enrol.MH <- enrol.MH %>% filter(medicalHistory >= 2*365) %>% select(ENROLID)
+  enrol.MH <- enrol.MH %>% filter(medicalHistory >= 2*365) %>% dplyr::select(ENROLID)
   PATIENTS_AGE_REGION <- x %>% filter(ENROLID %in% enrol.MH$ENROLID)
   
   # only patients with non-negative DAYSUP
@@ -241,7 +241,6 @@ FILTER_PATIENTS_AGE_REGION.T2 <- function(x, cohort = "adult") {
   # add main comorbidities
   if(cohort == "adult") {
     PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "adult")
-    # Patch ICD9 Code V12.54
   } else if (cohort == "children") {
     PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "children")
   }
@@ -508,5 +507,6 @@ tables_list <- dplyr::src_tbls(src) # list available tables
 
 # delete unessential variables
 rm(list=c("database","driver","odbcinst_content","port","pwd","server","uid"))
+rm(list=ls(pattern="^NZ"))
 
 
