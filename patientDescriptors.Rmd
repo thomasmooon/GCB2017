@@ -1,0 +1,79 @@
+---
+title: "patient descriptors"
+author: "Thomas Gerlach"
+subtitle: "patientDescriptors.Rmd"
+output: html_notebook
+date: "2017 FEB 08"
+---
+
+# setup
+```{r start, echo=FALSE, include = FALSE}
+rm(list=setdiff(ls(), "TABLE04.2"))
+knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7) # markdown
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04.2")) load("data/patches/TABLE04.2.RData")
+```
+
+
+# filter patients
+```{r standardize population, echo=FALSE}
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION.T2(TABLE04.2)
+
+# filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
+PATIENTS_AGE_REGION <- KeepIncidentAndCensored(PATIENTS_AGE_REGION)
+PATIENTS_AGE_REGION <- ParseICD9(PATIENTS_AGE_REGION)
+```
+
+# define censored and main-comorbidity populations
+```{r}
+# assignment to censored / incident (for a particular main-comorbidity) and "survival" endpoints (censoring date, incidence date)
+source("functions/GetCensoredIncidentSurvivalTime.R")
+censored.incident <- GetCensoredIncidentSurvivalTime(PATIENTS_AGE_REGION)
+save(censored.incident, file = "output/featureMatrix/censored.incident.RData", compress = TRUE)
+```
+
+
+# get patient features
+```{r}
+# ComputeQuartersFromIXDAYS
+source("functions/ComputeQuartersFromIXDAYS.R")
+P <- ComputeQuartersFromIXDAYS(PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365 & IXDAYS <= 90))
+unique(P$QUARTER)
+
+P.QUART.DIAG  <- P %>% filter(DIAG != "") %>% select(ENROLID, QUARTER, DIAG)
+P.QUART.SUBST <- P %>% filter(SUBSTANCENAME != "") %>% select(ENROLID, QUARTER, SUBSTANCENAME)
+save(P.QUART.DIAG, file = "output/featureMatrix/P.QUART.DIAG.RData", compress = TRUE)
+save(P.QUART.SUBST, file = "output/featureMatrix/P.QUART.SUBST.RData", compress = TRUE)
+
+# GetAgeSexRegion
+source("functions/GetAgeSexRegion.R")
+P.AgeSexRegion <- GetAgeSexRegion(P)
+
+# GetHOSPFL.DAYS
+source("functions/GetHOSPFL.DAYS.R")
+P.HOSPFL <- GetHOSPFL.DAYS(P)
+
+# GetMHSAFL.count
+source("functions/GetMHSAFL.R")
+P.MHSAFL <- GetMHSAFL.count(P)
+
+# GetQUARTQTY
+source("functions/GetQUARTQTY.R")
+P.AED_QUARTQTY <- GetQUARTQTY(P)
+
+
+```
+## join patient features
+```{r}
+P.feat.template <- 
+  P.AgeSexRegion %>% 
+  left_join(P.HOSPFL) %>% 
+  left_join(P.MHSAFL) %>% 
+  left_join(P.AED_QUARTQTY)
+
+# NA's to FALSE (zero)
+P.feat.template[is.na(P.feat.template)] <- 0
+
+save(P.feat.template, file = "output/featureMatrix/P.feat.template.RData", compress = TRUE)
+```
+
