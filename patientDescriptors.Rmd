@@ -61,6 +61,12 @@ P.MHSAFL <- GetMHSAFL.count(P)
 source("functions/GetQUARTQTY.R")
 P.AED_QUARTQTY <- GetQUARTQTY(P)
 
+  # drop features which are not in medical history
+  source("functions/NoMedicalHistoryColumns.R")
+  (noMHCols <- NoMedicalHistoryColumns(P.AED_QUARTQTY))
+  (noMHCols <- setdiff(noMHCols,"ENROLID"))
+  colSelect <- setdiff(colnames(P.AED_QUARTQTY), noMHCols)
+  P.AED_QUARTQTY <- P.AED_QUARTQTY[,colSelect]
 
 ```
 ## join patient features
