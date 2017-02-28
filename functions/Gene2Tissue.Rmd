@@ -1,0 +1,82 @@
+---
+title: "Gene2Tissue"
+subtitle: "http://www.proteinatlas.org/about/download, Data from the Human Protein Atlas in TAB format"
+author: "Thomas Gerlach"
+date: "2017 FEB 08"
+output: html_notebook
+---
+
+
+
+```{r}
+rm(list=ls())
+
+library(readr)
+proteinatlas <- read_delim("~/epilepsie_preprocessing_descrStat/data/proteinatlas.tab/proteinatlas.txt",
+"\t", escape_double = FALSE, col_types = cols(Antibody = col_skip(),
+Chromosome = col_skip(), Ensembl = col_skip(),
+`Gene description` = col_skip(),
+`Gene synonym` = col_skip(), `HPA evidence` = col_skip(),
+`MS evidence` = col_skip(), Position = col_skip(),
+`Protein class` = col_skip(), `RNA TS` = col_skip(),
+`RNA tissue category` = col_character(),
+`Reliability (Mouse Brain)` = col_skip(),
+`Subcellular location` = col_skip(),
+`UniProt evidence` = col_skip()),
+na = "empty")
+
+require(dplyr)
+require(tidyr)
+
+glimpse(proteinatlas)
+```
+
+# The final score leads to the assignment into one of the following four classes:
+*Validated* If there is more than one source supporting the localization; for example, two independent antibodies show the same localization and this is also observed in experiments outside the Human Protein Atlas project.
+*Supported* If there is one source supporting the localization.
+*Approved* - If the localization of the protein has not been previously described and was detected by only one antibody without additional antibody validation.
+*Uncertain* - If the antibody-staining pattern contradicts experimental data or no expression is detected on the RNA level.
+```{r}
+unique(proteinatlas$Evidence) #  "Evidence at protein level"    "Evidence at transcript level" "No evidence"  
+unique(proteinatlas$`Reliability (IH)`) # "Approved"  "Uncertain" "Supported" "" 
+unique(proteinatlas$`Reliability (IF)`) # Approved"  ""          "Uncertain" "Supported" "Validated"
+unique(proteinatlas$`RNA tissue category`) # "Mixed"            "Tissue enhanced"  "Expressed in all" "Group enriched"   "Tissue enriched"  "Not detected" 
+
+colnames(proteinatlas) <- make.names(colnames(proteinatlas))
+# exclude Uncertain or Unassigned
+proteinatlas <- proteinatlas %>% filter(Reliability..IH. != "", Reliability..IH. != "Uncertain", Reliability..IF. != "", Reliability..IF. != "Uncertain")
+
+# keep only "Tissue enhanced", "Tissue enriched", "Group enriched"
+proteinatlas <- proteinatlas %>% filter(RNA.tissue.category %in% c("Tissue enhanced","Tissue enriched","Group enriched"))
+
+# omit needless columns
+proteinatlas <- proteinatlas %>% select(Gene, RNA.TS.TPM, TPM.max.in.non.specific)
+
+# reshape
+proteinatlas.u <- proteinatlas %>% unite(enriched, RNA.TS.TPM, TPM.max.in.non.specific, sep = ";")
+
+# parse columns
+source("~/epilepsie_preprocessing_descrStat/functions/parseColByIdx.R")
+require(tibble)
+proteinatlas.p <- parseColByIdx(proteinatlas.u, "enriched")
+proteinatlas.s <- proteinatlas.p %>% separate(col = enriched, c("tissue","TPM"), sep=":")
+proteinatlas.final <- proteinatlas.s %>% select(Gene, tissue) %>% distinct()
+proteinatlas.final$tissue <- gsub(" ","_",proteinatlas.final$tissue)
+```
+
+# gene symbol -> entrez -> uniprot
+```{r}
+library(org.Hs.eg.db)
+columns(org.Hs.eg.db)
+key <- unique(proteinatlas.final$Gene)
+symbol2entrez2uniprot <- AnnotationDbi::select(org.Hs.eg.db, keys=key, keytype="SYMBOL" ,columns=c("SYMBOL","ENTREZID","UNIPROT")) 
+symbol2uniprot <- symbol2entrez2uniprot[complete.cases(symbol2entrez2uniprot),] %>% dplyr::select(-ENTREZID) %>% distinct()
+```
+
+# uniprot -> tissue
+```{r}
+uniprot2tissue <- inner_join(proteinatlas.final, symbol2uniprot, by = c("Gene" = "SYMBOL")) %>% dplyr::select(UNIPROT, tissue) %>% distinct()
+save(uniprot2tissue, file="~/epilepsie_preprocessing_descrStat/data/uniprot2tissue.RData", compress = TRUE)
+```
+
+

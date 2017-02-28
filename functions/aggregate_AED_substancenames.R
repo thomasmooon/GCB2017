@@ -1,0 +1,68 @@
+aggregate_AED_substancenames <- function(PATIENTS_AGE_REGION) {
+  
+  subst_origin <- c(
+    "DIVALPROEX SODIUM",
+    "ESLICARBAZEPINE ACETATE",
+    "ETHOSUXIMIDE",
+    "FELBAMATE",
+    "FOSPHENYTOIN SODIUM",
+    "GABAPENTIN",
+    "GABAPENTIN ENACARBIL",
+    "LACOSAMIDE",
+    "LAMOTRIGINE",
+    "LEVETIRACETAM",
+    "OXCARBAZEPINE",
+    "PHENYTOIN",
+    "PHENYTOIN SODIUM",
+    "PRIMIDONE",
+    "TIAGABINE HYDROCHLORIDE",
+    "TOPIRAMATE",
+    "VALPROATE SODIUM",
+    "VALPROIC ACID",
+    "VIGABATRIN",
+    "ZONISAMIDE"
+  )
+  
+  subst_new <- c(
+    "DIVALPROEX SODIUM",
+    "ESLICARBAZEPINE ACETATE",
+    "ETHOSUXIMIDE",
+    "FELBAMATE",
+    "FOSPHENYTOIN SODIUM",
+    "GABAPENTIN / GABAPENTIN ENACARBIL",
+    "GABAPENTIN / GABAPENTIN ENACARBIL",
+    "LACOSAMIDE",
+    "LAMOTRIGINE",
+    "LEVETIRACETAM",
+    "OXCARBAZEPINE",
+    "PHENYTOIN / PHENYTOIN SODIUM",
+    "PHENYTOIN / PHENYTOIN SODIUM",
+    "PRIMIDONE",
+    "TIAGABINE HYDROCHLORIDE",
+    "TOPIRAMATE",
+    "VALPROIC ACID / VALPROATE SODIUM",
+    "VALPROIC ACID / VALPROATE SODIUM",
+    "VIGABATRIN",
+    "ZONISAMIDE"
+  )
+  
+  print("Matching table for SUBSTANCENAME's")
+  print(knitr:::kable(cbind(subst_origin,subst_new)))
+  
+  PATIENTS_AGE_REGION <-
+    left_join(
+      PATIENTS_AGE_REGION, 
+      as_tibble(cbind(SUBSTANCENAME = subst_origin, subst_new)),
+      by ="SUBSTANCENAME") 
+  
+  id_na <- is.na(PATIENTS_AGE_REGION$subst_new)
+  PATIENTS_AGE_REGION$subst_new[id_na] <- PATIENTS_AGE_REGION$SUBSTANCENAME[id_na]
+  
+  PATIENTS_AGE_REGION <-
+    PATIENTS_AGE_REGION %>% 
+    dplyr::select(-SUBSTANCENAME) %>% 
+    dplyr::rename(SUBSTANCENAME = subst_new)
+  
+  #
+  return(PATIENTS_AGE_REGION)
+}

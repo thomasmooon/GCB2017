@@ -1,0 +1,58 @@
+---
+title: "Get Medical History for patients in TABLE04.T2"
+output: html_notebook
+---
+
+```{r}
+load("~/epilepsie_preprocessing_descrStat/data/patches/TABLE04.2.RData")
+source("~/epilepsie_preprocessing_descrStat/z_start.R")
+
+# compute medical history (2y)
+enrol.MH <- 
+  TABLE04.2 %>% 
+  select(ENROLID, STARTDT, INDEXDT) %>%  distinct() %>% 
+  group_by(ENROLID) %>% mutate(minDate = min(STARTDT)) %>% 
+  select(ENROLID, minDate, INDEXDT) %>% distinct() %>% 
+  mutate(medicalHistory = INDEXDT - minDate)
+
+# get patients with expanded medical history (1 quarter after indexdate 0)
+enrol.MHexp <- 
+  TABLE04.2 %>% 
+  select(ENROLID, IXDAYS) %>%  distinct() %>% 
+  group_by(ENROLID) %>% mutate(maxIX = max(IXDAYS)) %>% 
+  ungroup() %>% select(ENROLID, maxIX) %>% distinct() %>% 
+  filter(maxIX > 90) # largest IXDAY event must be at least 90 days
+
+enrol.MH <- enrol.MH[enrol.MH$ENROLID %in% enrol.MHexp$ENROLID,]
+
+head(enrol.MH)
+save(enrol.MH, file="~/epilepsie_preprocessing_descrStat/data/patches/enrol.MH.RData", compress = TRUE)
+
+```
+
+# some stats
+```{r}
+cat("patients with medical history >= 2y: ",sum(enrol.MH$medicalHistory >= 2*365))
+ggplot(enrol.MH, aes(as.numeric(medicalHistory))) + 
+  geom_histogram() + 
+  xlab("medical history") +
+  theme(panel.background = element_rect(fill = "grey"))
+
+ggplot(enrol.MH, aes((minDate))) + 
+  geom_histogram() + 
+  xlab("first event") +
+  theme(panel.background = element_rect(fill = "grey"))
+
+ggplot(enrol.MH, aes(medicalHistory)) + 
+  stat_ecdf() +
+  geom_vline(xintercept = c(365,2*365), linetype="dashed", colour="blue") +
+  ggtitle("ECDF \n dashed line: 1y,") +
+  theme(panel.background = element_rect(fill = "grey"))
+```
+
+# some OTHER stats
+
+```{r}
+
+```
+
