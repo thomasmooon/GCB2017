@@ -397,6 +397,13 @@ load("~/epilepsie_preprocessing_descrStat/data/gene_ontology/go-basic.obo.RData"
 drug2go <- inner_join(u2g, drug2go, by = "GO") %>% dplyr::select(-UNIPROT) %>% distinct() %>% as_tibble() %>% distinct()
 drug2go <- inner_join(drug2go, go.ontology, by = c("GO" = "go.id")) %>% dplyr::select(-GO) %>% distinct()
 drug2go <- drug2go %>% dplyr::rename(GO = TARGET.GO.CLASS.TERM)
+
+
+# keep only BP class
+cat("\n keep only BP-class GO terms \n")
+pattern <- "^BP"
+BP <- grep(pattern, drug2go$GO)
+drug2go <- drug2go[BP,]
 ```
 
 # UNIPROT -> PATHWAY
@@ -592,25 +599,23 @@ FeatStats(fo.drug2pathway)
 FeatStats(fo.drug2tissue)
 
 # spread features for joins
-fo.DRD1               <- spread(data.frame(fo.DRD1,key=1), PHARMCLS1, key, fill = 0, sep = ".x.")
-fo.drug2indications.1 <- spread(data.frame(fo.drug2indications.1,key=1), PHEWAS_STRING_HL, key, fill = 0, sep = ".x.")
-fo.drug2indications.2 <- spread(data.frame(fo.drug2indications.2,key=1), PHEWAS_STRING, key, fill = 0, sep = ".x.")
-fo.drug2go            <- spread(data.frame(fo.drug2go,key=1), GO, key, fill = 0, sep = ".x.")
-fo.drug2pathway       <- spread(data.frame(fo.drug2pathway,key=1), PATHWAY, key, fill = 0, sep = ".x.")
-fo.drug2tissue        <- spread(data.frame(fo.drug2tissue,key=1), tissue, key, fill = 0, sep = ".x.")
-
-
-# ## spread drug2sideffects
-# unique(fo.drug2sideeffects$WHO)
-# drug2sideffects.format <- data.frame(WHO = c("VERY_RARE","RARE","UNCOMMON","COMMON","VERY_COMMON"), value = 1:5, stringsAsFactors = FALSE)
-# fo.drug2sideeffects   <- left_join(fo.drug2sideeffects,drug2sideffects.format) %>% dplyr::select(-WHO)
-# fo.drug2sideeffects   <- aggregate(value ~., fo.drug2sideeffects, FUN = min) %>% as_tibble
-# fo.drug2sideeffects   <- left_join(fo.drug2sideeffects,drug2sideffects.format) %>% dplyr::select(-value)
-# fo.drug2sideeffects   <- spread(fo.drug2sideeffects, SIDEEFFECTS, WHO, fill = "0", sep = ".x.")
-fo.drug2sideeffects <- unite(fo.drug2sideeffects, SIDEEFFECTxFREQ, SIDEEFFECTS, WHO, sep=".x.")
-fo.drug2sideeffects <- spread(data.frame(fo.drug2sideeffects,key=1), SIDEEFFECTxFREQ, key, fill = 0, sep = ".x.")
-
-
+  ## rename for spread to retrieve meaningful variable names
+  fo.DRD1 <- fo.DRD1 %>% dplyr::rename(DRUG.PHARMCLS1 = PHARMCLS1)
+  fo.drug2indications.1 <- fo.drug2indications.1 %>% dplyr::rename(DRUG.PHEWAS_HL = PHEWAS_STRING_HL)
+  fo.drug2indications.2 <- fo.drug2indications.2 %>% dplyr::rename(DRUG.PHEWAS = PHEWAS_STRING)
+  fo.drug2go <- fo.drug2go %>% dplyr::rename(DRUG.GO = GO)
+  fo.drug2pathway <- fo.drug2pathway %>% dplyr::rename(DRUG.PATHWAY = PATHWAY)
+  fo.drug2tissue <- fo.drug2tissue %>% dplyr::rename(DRUG.TISSUE = tissue)
+  fo.drug2sideeffects <- fo.drug2sideeffects %>% dplyr::rename(DRUG.SIDEEFFECTS = SIDEEFFECTS)
+  ## spread
+  fo.DRD1               <- spread(data.frame(fo.DRD1,key=1), DRUG.PHARMCLS1, key, fill = 0, sep = ".x.")
+  fo.drug2indications.1 <- spread(data.frame(fo.drug2indications.1,key=1), DRUG.PHEWAS_HL, key, fill = 0, sep = ".x.")
+  fo.drug2indications.2 <- spread(data.frame(fo.drug2indications.2,key=1), DRUG.PHEWAS, key, fill = 0, sep = ".x.")
+  fo.drug2go            <- spread(data.frame(fo.drug2go,key=1), DRUG.GO, key, fill = 0, sep = ".x.")
+  fo.drug2pathway       <- spread(data.frame(fo.drug2pathway,key=1), DRUG.PATHWAY, key, fill = 0, sep = ".x.")
+  fo.drug2tissue        <- spread(data.frame(fo.drug2tissue,key=1), DRUG.TISSUE, key, fill = 0, sep = ".x.")
+  fo.drug2sideeffects <- unite(fo.drug2sideeffects, DRUG2SIDEEFFECTxFREQ, DRUG.SIDEEFFECTS, WHO, sep=".x.")
+  fo.drug2sideeffects <- spread(data.frame(fo.drug2sideeffects,key=1), DRUG2SIDEEFFECTxFREQ, key, fill = 0, sep = ".x.")
 ```
 
 # combine fo.* to drug.features

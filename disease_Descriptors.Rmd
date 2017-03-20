@@ -284,27 +284,18 @@ GoEnrichment <- function(genes, .universe, .ontology = "BP", .pvalueCutoff = 0.0
 # enrichment analysis for BP / MF / CC
 
 goEnrBP <- mclapply(disease2genes.enr, FUN = function(genes) GoEnrichment(genes, universe$ENTREZID, "BP"), mc.preschedule = FALSE, mc.cores = 1)
-goEnrMF <- mclapply(disease2genes.enr, FUN = function(genes) GoEnrichment(genes, universe$ENTREZID, "MF"), mc.preschedule = FALSE, mc.cores = 1)
-goEnrCC <- mclapply(disease2genes.enr, FUN = function(genes) GoEnrichment(genes, universe$ENTREZID, "CC"), mc.preschedule = FALSE, mc.cores = 1)
 
 # keep only go-id's with Count > 1 and Size > 1 to avoid over-optimistic enrichment
 # keep only go.term column
 goEnrBP <- lapply(goEnrBP, function(x) x %>% filter(Count >1, Size >1) %>% dplyr::select(Term) %>% dplyr::rename(GO = Term))
-goEnrMF <- lapply(goEnrMF, function(x) x %>% filter(Count >1, Size >1) %>% dplyr::select(Term) %>% dplyr::rename(GO = Term))
-goEnrCC <- lapply(goEnrCC, function(x) x %>% filter(Count >1, Size >1) %>% dplyr::select(Term) %>% dplyr::rename(GO = Term))
 
 # combine BP + MF + CC + related diseases
 l1 <- unlist(lapply(goEnrBP,function(x) dim(x)[1]))
-l2 <- unlist(lapply(goEnrMF,function(x) dim(x)[1]))
-l3 <- unlist(lapply(goEnrCC,function(x) dim(x)[1]))
 x1 <- data.frame(ICD9 = rep(diseases.enr,l1), unlist(goEnrBP), row.names = NULL, stringsAsFactors = F) %>% setNames(c("ICD9","GO"))
-x2 <- data.frame(ICD9 = rep(diseases.enr,l2), unlist(goEnrMF), row.names = NULL, stringsAsFactors = F) %>% setNames(c("ICD9","GO"))
-x3 <- data.frame(ICD9 = rep(diseases.enr,l3), unlist(goEnrCC), row.names = NULL, stringsAsFactors = F) %>% setNames(c("ICD9","GO"))
-disease2go <- rbind(x1,x2,x3)
-disease2go <- NormalizeStrings(disease2go)
+disease2go    <- x1
+disease2go    <- NormalizeStrings(disease2go)
 disease2go$GO <- make.names(disease2go$GO)
-disease2go <- disease2go %>% distinct()
-rm(l1,l2,l3,x1,x2,x3)
+disease2go     <- disease2go %>% distinct()
 ```
 
 ## PATHWAY ENRICHMENT

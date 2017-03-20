@@ -1,18 +1,24 @@
 ---
 title: "feature matrix"
 subtitle: ""
-date: "2017 FEB 20"
+date: "2017 FEB 27"
 output: html_notebook
 ---
 
 
 # load patient / drug / disease features + censored/comorbidity enrolment
-```{r}
-rm(list=ls())
+```{r setup}
+
+# load packages
 require(dplyr)
 require(tidyr)
 library(profvis)
 library(data.table)
+library(mRMRe)
+  set.thread.count(10) # allow up to 10 cores for parallelization
+
+# load functions
+source("functions/Lib.featSelAndRF.R")
 
 # drug raw features
   load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/DRUG.FEATMAT.RData")
@@ -22,6 +28,7 @@ library(data.table)
 
 # patient features
   load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/P.feat.template.RData") # contains age, sex, region, status, time
+  setDT(P.feat.template)
   load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.RData") # contains assigment to censored / main-comorbidity
   load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/P.QUART.SUBST.RData") # contains treatment by quarter
   P.QUART.SUBST$SUBSTANCENAME <- make.names(P.QUART.SUBST$SUBSTANCENAME)
@@ -31,284 +38,54 @@ library(data.table)
     quarters <- c(paste("m",1:9, sep = ""), "1")
     P.QUART.SUBST <- P.QUART.SUBST %>% filter(QUARTER %in% quarters)
     P.QUART.DIAG  <- P.QUART.DIAG %>% filter(QUARTER %in% quarters)
+```
+
+
+# assignment to training and test data by main-comorbidity
+```{r set test and training datasets}
 
 # filter populations by main-comorbidity
 unique(censored.incident$status)
 censored       <- censored.incident %>% filter(status == "censored") %>% mutate(status = 0)
-Anxiety        <- censored.incident %>% filter(status == "Anxiety") %>% mutate(status = 1)
-Depression     <- censored.incident %>% filter(status == "Depression") %>% mutate(status = 1)
-Diabetes       <- censored.incident %>% filter(status == "Diabetes") %>% mutate(status = 1)
-Hyperlipidemia <- censored.incident %>% filter(status == "Hyperlipidemia") %>% mutate(status = 1)
-Hypertension   <- censored.incident %>% filter(status == "Hypertension") %>% mutate(status = 1)
+# Anxiety        <- censored.incident %>% filter(status == "Anxiety") %>% mutate(status = 1)
+# Depression     <- censored.incident %>% filter(status == "Depression") %>% mutate(status = 1)
+# Diabetes       <- censored.incident %>% filter(status == "Diabetes") %>% mutate(status = 1)
+# Hyperlipidemia <- censored.incident %>% filter(status == "Hyperlipidemia") %>% mutate(status = 1)
+# Hypertension   <- censored.incident %>% filter(status == "Hypertension") %>% mutate(status = 1)
 Migraine       <- censored.incident %>% filter(status == "Migraine") %>% mutate(status = 1)
 
-```
-
-
-# train and test enrolment id's
-
-## function
-```{r}
-GetTestTrainAssignment <- function(censored, comorb, seedCensored = 1, seedComorb = 2, train.fraction = 5/6, test.fraction = 1/6) {
-  
-  set.seed(seedCensored)
-  train.censored.idx <- sample(1 : nrow(censored), size = train.fraction*nrow(censored))
-  train.censored     <- censored[train.censored.idx,]
-  test.censored      <- censored[-train.censored.idx,]
-  
-  set.seed(seedComorb)
-  train.comorb.idx <- sample(1 : nrow(comorb), size = train.fraction*nrow(comorb))
-  train.comorb     <- comorb[train.comorb.idx,]
-  test.comorb      <- comorb[-train.comorb.idx,]
-  
-  train.data <- rbind(train.censored, train.comorb)
-  test.data  <- rbind(test.censored, test.comorb)
-  
-  return(list(train.data = train.data, test.data = test.data))
-  }
-```
-
-
-# stratified assignment to training and test data
-```{r}
-Anxiety.Enrol        <- GetTestTrainAssignment(censored, Anxiety)
-Depression.Enrol     <- GetTestTrainAssignment(censored, Depression)
-Diabetes.Enrol       <- GetTestTrainAssignment(censored, Diabetes)
-Hyperlipidemia.Enrol <- GetTestTrainAssignment(censored, Hyperlipidemia)
-Hypertension.Enrol   <- GetTestTrainAssignment(censored, Hypertension)
+# Anxiety.Enrol        <- GetTestTrainAssignment(censored, Anxiety)
+# Depression.Enrol     <- GetTestTrainAssignment(censored, Depression)
+# Diabetes.Enrol       <- GetTestTrainAssignment(censored, Diabetes)
+# Hyperlipidemia.Enrol <- GetTestTrainAssignment(censored, Hyperlipidemia)
+# Hypertension.Enrol   <- GetTestTrainAssignment(censored, Hypertension)
 Migraine.Enrol       <- GetTestTrainAssignment(censored, Migraine)
 ```
 
-# add features
+# feature selection
+```{r pre-filtering feature matrix}
+Migraine.Features <- 
+  GetMCFeatureMatrix(
+    mainComorb.Enrolment = Migraine.Enrol, 
+    rawDrugFeatures =      drug.features, 
+    patQuartTreat =        P.QUART.SUBST, 
+    rawDiseaseFeatures =   DISEASES.FEATMAT, 
+    patQuartDiag =         P.QUART.DIAG, 
+    patFeatures =          P.feat.template
+   )
 
-## Anxiety - substance features
+# mRMR feature selection
+Migraine.Features$mRMR <- featureSelectionMRMR(featureMatrix = Migraine.Features$featureMatrix)
+
+# save
+save.image(file="featureSelectionAndMatrices.Migraine.RData", compress = TRUE)
+```
+
+# survival random forest
 ```{r}
 
-# step by step
-##############
-# required data: test+training dataset, drugfeatures
-# join substance features to test and training data set
-# aggregate by quarter
-# spread
-test.idx     <- P.QUART.SUBST$ENROLID %in% Anxiety.Enrol$test.data$ENROLID
-subst.test   <- P.QUART.SUBST[test.idx,]
-
-train.idx    <- P.QUART.SUBST$ENROLID %in% Anxiety.Enrol$train.data$ENROLID
-subst.train  <- P.QUART.SUBST[train.idx, ] 
-
-nPat          <- n_distinct(subst.train$ENROLID)
-nPatFeatThres <- ceiling(nPat * 0.05) # threshold below features will be dropped
-
-setDT(subst.train)
-
-# maximum occurrence of a substance in any quarter in the training dataset
-substMaxN <- 
-  subst.train %>% group_by(SUBSTANCENAME, QUARTER) %>% tally() %>% # n substance per quarter
-  ungroup() %>% group_by(SUBSTANCENAME) %>% mutate(max = max(n)) %>% dplyr::select(SUBSTANCENAME, max) %>% distinct() # max(n) substance in any quarter
-
-# get non-sparse drug features (feature occurs in at least nPatFeatThres patients in *any* quarter)
-subst.train.f <- substMaxN[drug.features, on = "SUBSTANCENAME", nomatch=0] # data.table inner join
-setDF(subst.train.f)
-subst.train.f[,-c(1,2)] <- subst.train.f[,-c(1,2)] * subst.train.f$max
-subst.train.f$max       <- c()
-nonSparseFeatures       <- colSums(subst.train.f[,-1]) >= nPatFeatThres
-nonSparseFeatures       <- c(TRUE, nonSparseFeatures) # 1st TRUE = SUBSTANCENAME
-drug.features.nonSparse <- drug.features[,nonSparseFeatures] %>% filter(SUBSTANCENAME %in% subst.train.f$SUBSTANCENAME)
-
-# inner join drug features to training
-setDT(drug.features.nonSparse)
-setDT(subst.train)
-subst.train <- subst.train[drug.features.nonSparse, on = "SUBSTANCENAME", nomatch = 0]
-subst.train[,SUBSTANCENAME := NULL]
-
-# aggregate by .(enrolid, quarter)
-start.1 <- proc.time()
-names <- colnames(subst.train)[3:ncol(subst.train)]
-subst.train.feat <- 
-  dcast(
-    subst.train, 
-    ENROLID ~ QUARTER, 
-    fun.aggregate = sum, # summarise frequency for quantitative features
-    sep = ".x.", 
-    value.var = names, 
-    fill = 0) 
-stop.1 <- proc.time() - start.1
-stop.1
-
-# drop features with don't occur in at least nPatFeatThres cases
-colnames <- subst.train.feat[, lapply(.SD, function(x) sum(x>0) < nPatFeatThres) , .SDcols = !"ENROLID"]
-delCols  <- as.numeric(which(unlist(colnames)))
-delCols  <- delCols +1 # shift by 1 because column ENROLID was omitted 2 rows above
-cat(ncol(subst.train.feat)- 1 - length(delCols),"of",ncol(subst.train.feat)-1,"feature columns appear in at least", nPatFeatThres,"patients",sep = " ")
-subst.train.feat <- subst.train.feat[, -delCols, with = FALSE]
-
-# clean workspace
-save(subst.train.feat, file = "output/featureMatrix/subst.train.feat.RData", compress = TRUE)
-rm(subst.train.feat, subst.train, colnames, delCols, names, drug.features, P.QUART.SUBST)
+# add time status AGE GENDER REGIONC to feature mRMR feature selection
 ```
 
 
-## disease features
-```{r}
-
-# spread
-test.idx     <- P.QUART.DIAG$ENROLID %in% Anxiety.Enrol$test.data$ENROLID
-diag.test    <- P.QUART.DIAG[test.idx,]
-
-train.idx    <- P.QUART.DIAG$ENROLID %in% Anxiety.Enrol$train.data$ENROLID
-diag.train   <- P.QUART.DIAG[train.idx, ] 
-
-nPat          <- n_distinct(diag.train$ENROLID)
-nPatFeatThres <- ceiling(nPat * 0.05)
-
-setDT(diag.train)
-setDT(DISEASES.FEATMAT)
-
-# aggregate
-DISEASES.FEATMAT$ICD9 <- as.numeric(DISEASES.FEATMAT$ICD9)
-DISEASES.FEATMAT      <- DISEASES.FEATMAT[, lapply(.SD, max), by = ICD9]
-
-# maximum occurrence of a diagnosis in any quarter in the training dataset
-diagMaxN <- 
-  diag.train %>% group_by(DIAG, QUARTER) %>% tally() %>% # n diagnosis per quarter
-  ungroup() %>% group_by(DIAG) %>% mutate(max = max(n)) %>% dplyr::select(DIAG, max) %>% distinct() # max(n) diagnosis in any quarter
-diagMaxN$DIAG <- as.numeric(diagMaxN$DIAG)
-diagMaxN      <- diagMaxN[complete.cases(diagMaxN),]
-setDT(diagMaxN)
-
-# get non-sparse drug features (feature occurs in at least nPatFeatThres patients in *any* quarter)
-diag.train.f <- merge(diagMaxN,DISEASES.FEATMAT, by.x = "DIAG", by.y="ICD9", all.x = 0) # data.table inner join
-
-setDF(diag.train.f)
-diag.train.f[,-c(1,2)]  <- diag.train.f[,-c(1,2)] * diag.train.f$max
-diag.train.f$max        <- c()
-nonSparseFeatures       <- colSums(diag.train.f[,-1]) >= nPatFeatThres
-nonSparseFeatures       <- c(TRUE, nonSparseFeatures) # 1st TRUE = DIAG
-DISEASES.FEATMAT.nonSparse <- DISEASES.FEATMAT[,nonSparseFeatures, with = FALSE] %>% filter(ICD9 %in% diag.train.f$DIAG)
-
-# inner join drug features to training
-setDT(DISEASES.FEATMAT.nonSparse)
-setDT(diag.train)
-diag.train$DIAG <- as.numeric(diag.train$DIAG)
-diag.train <- merge(diag.train, DISEASES.FEATMAT.nonSparse, by.x = "DIAG", by.y="ICD9", all.x = 0) # data.table inner join
-diag.train[,DIAG := NULL]
-
-# aggregate by .(enrolid, quarter)
-start.1 <- proc.time()
-names <- colnames(diag.train)[3:ncol(diag.train)]
-diag.train.feat <- 
-  dcast(
-    diag.train, ENROLID ~ QUARTER, 
-    fun.aggregate = sum, # take sum() of the boolean features to retrieve qualitative feature
-    sep = ".x.", 
-    value.var = names, 
-    fill = 0) 
-stop.1 <- proc.time() - start.1
-stop.1
-
-class(diag.train.feat)
-diag.train.feat[1:10, 1:10, with = FALSE]
-
-
-## drop features with don't occur in at least nPatFeatThres cases
-delCols <- diag.train.feat[, lapply(.SD, function(x) sum(x>0) < nPatFeatThres) , .SDcols = !"ENROLID"]
-delCols <- as.numeric(which(unlist(delCols)))
-delCols <- delCols +1 # shift by 1 because column ENROLID was omitted 2 rows above
-cat(ncol(diag.train.feat)- 1 - length(delCols),"of",ncol(diag.train.feat)-1,"feature columns appear in at least", nPatFeatThres,"patients",sep = " ")
-diag.train.feat <- diag.train.feat[, -delCols, with = FALSE]
-
-# save results
-save(diag.train.feat, file = "output/featureMatrix/diag.train.feat.RData", compress = TRUE)
-
-# clean workspace
-rm(diag.train.feat, diag.train, delCols, names, DISEASES.FEATMAT, P.QUART.DIAG, diag.test, diag.train.f, DISEASES.FEATMAT.nonSparse, P.QUART.SUBST)
-```
-
-## patient features
-```{r}
-setDT(P.feat.template)
-patient.train.feat <- P.feat.template[ENROLID %in% Anxiety.Enrol$train.data$ENROLID,]
-save(patient.train.feat, file = "output/featureMatrix/patient.train.feat.RData", compress = TRUE)
-```
-
-## patient survival data
-```{r}
-patient.surv.feat <- Anxiety.Enrol$train.data
-save(patient.surv.feat, file = "output/featureMatrix/patient.surv.feat.RData", compress = TRUE)
-
-```
-
-
-
-# join all features
-```{r}
-rm(list=ls())
-# feature matrix
-  # disease features
-  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/diag.train.feat.RData")
-
-  # drug features
-  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/subst.train.feat.RData")
-  
-  # patient features (age, sex, region, mhsafl, hospfl)
-  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/patient.train.feat.RData")
-  
-  # patient survival data (time, status)
-  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/patient.surv.feat.RData")
-```
-
-## combine features
-```{r}
-
-anx.feat <- 
-  patient.surv.feat %>%  
-  inner_join(patient.train.feat, by = "ENROLID") %>% 
-  inner_join(diag.train.feat, by = "ENROLID")  %>%  
-  inner_join(subst.train.feat, by = "ENROLID")
-```
-
-### check for features later than quarter 2
-```{r}
-source("functions/NoMedicalHistoryColumns.R")
-(noMHColumns <- NoMedicalHistoryColumns(anx.feat))
-
-```
-
-
-
-## mRMRe feature selection
-```{r}
-library(mRMRe)
-setDF(anx.feat)
-anx.feat[1:10,1:10]
-anx.feat$time <- as.numeric(anx.feat$time)
-
-# GENDER and REGIONC are inappropiate for mRMRe feature selection, because type must be either numeric, survival or ordered factor
-  c1          <- which(colnames(anx.feat) %in% c("ENROLID","GENDER","REGIONC"))
-  anx.feat.c1 <- anx.feat[,c1]
-  anx.feat.fs <- anx.feat[,-c1] # select columns appropiate for mRMRe algorithm
-  anx.feat.fs[1:10, 1:10]
-
-# create mRMR.data object
-  dd             <- mRMR.data(data = anx.feat.fs)
-  
-  # stratify by status for bootstrap
-  sampleStrata(dd) <-  as.factor(anx.feat.fs$status)
-
-# select time and status as variables as reference variables to select features which correlated most to status and time,
-# but a minimum correlated to each other (= most redundant) 
-  target_indices <- which(colnames(anx.feat.fs) %in% c("time","status"))
-  set.thread.count(10) # allow up to 10 cores for parallelization
-  exect <- system.time(fs <- new("mRMRe.Filter", data = dd, target_indices = target_indices, levels = rep(1,500)))
-  
-## print the names of the selected features for (each distinct) mRMR solutions
-featureNames <- print(apply(solutions(fs)[[1]], 2, function(x, y) { return(y[x]) }, y=featureNames(dd)))
-sort(featureNames)
-
-```
-
-
-```{r}
-save.image(file="featureSelectionAndMatrices.Anxiety.RData", compress = TRUE)
-```
 

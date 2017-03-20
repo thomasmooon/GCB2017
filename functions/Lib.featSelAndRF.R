@@ -26,24 +26,23 @@ GetTestTrainAssignment <- function(censored, comorb, seedCensored = 1, seedComor
 
 # efficient attachment of raw drug features to patients treatment table
 
-AddTreatmentFeatures <- function(rawDrugFeatures, patQuartTreat, enrolment) {
+AddTreatmentFeatures <- function(rawDrugFeatures, patQuartTreat, enrolment, trainingFeatures = NULL ) {
   
-  # get training dataset
-  train.idx <- patQuartTreat$ENROLID %in% enrolment$train.data$ENROLID
-  training  <- patQuartTreat[train.idx, ] 
+  if(length(trainingFeatures) == 0) {
+  # get x dataset
+  idx <- patQuartTreat$ENROLID %in% enrolment$ENROLID
+  x  <- patQuartTreat[idx, ] 
   
   # pre-filtering: drop rare features
-  ###################################
   
-  # threshold below features will be dropped
-  nPat          <- n_distinct(training$ENROLID)
+  ## threshold below features will be dropped
+  nPat          <- n_distinct(x$ENROLID)
   nPatFeatThres <- ceiling(nPat * 0.05) 
   
-  setDT(training)
-  
-  # maximum occurrence of a substance in any quarter in the training dataset
+  ## maximum occurrence of a substance in any quarter in the x dataset
+  setDT(x)
   treatMaxN <- 
-    training %>% 
+    x %>% 
     group_by(SUBSTANCENAME, QUARTER) %>% 
     tally() %>% # n substance per quarter
     ungroup() %>% 
@@ -52,69 +51,82 @@ AddTreatmentFeatures <- function(rawDrugFeatures, patQuartTreat, enrolment) {
     dplyr::select(SUBSTANCENAME, max) %>%
     distinct() # max(n) substance in any quarter
   
-  # get non-sparse drug features (feature occurs in at least nPatFeatThres patients in *any* quarter)
-  # -> drop features which don't fulfill this
-  training.maxN <- treatMaxN[rawDrugFeatures, on = "SUBSTANCENAME", nomatch=0] # data.table inner join
-  setDF(training.maxN)
-  omitCols                  <- which(colnames(training.maxN) %in% c("SUBSTANCENAME","max"))
-  training.maxN[,-omitCols] <- training.maxN[,-omitCols] * training.maxN$max
-  training.maxN$max         <- c()
-  omitCols                  <- which(colnames(training.maxN) %in% c("SUBSTANCENAME"))
-  nonSparseFeatures         <- colSums(training.maxN[,-omitCols]) >= nPatFeatThres
-  nonSparseFeatures         <- c(TRUE, nonSparseFeatures) # 1st TRUE = SUBSTANCENAME
-  rawDrugFeatures.nonSparse <- rawDrugFeatures[,nonSparseFeatures] %>% filter(SUBSTANCENAME %in% training.maxN$SUBSTANCENAME)
+  ## get non-sparse drug features (feature occurs in at least nPatFeatThres patients in *any* quarter)
+  ## -> drop features which don't fulfill this
+  x.maxN <- treatMaxN[rawDrugFeatures, on = "SUBSTANCENAME", nomatch=0] # data.table inner join
+  setDF(x.maxN)
+  omitCols                  <- which(colnames(x.maxN) %in% c("SUBSTANCENAME","max"))
+  x.maxN[,-omitCols] <- x.maxN[,-omitCols] * x.maxN$max
+  x.maxN$max <- c()
+  omitCols <- which(colnames(x.maxN) %in% c("SUBSTANCENAME"))
+  nonSparseFeatures <- colSums(x.maxN[,-omitCols]) >= nPatFeatThres
+  nonSparseFeatures  <- c(TRUE, nonSparseFeatures) # 1st TRUE = SUBSTANCENAME
+  rawDrugFeatures.nonSparse <- rawDrugFeatures[,nonSparseFeatures] %>% filter(SUBSTANCENAME %in% x.maxN$SUBSTANCENAME)
   
-  # match pre-filtered drug features to training dataset
+  ## match pre-filtered drug features to x dataset
   setDT(rawDrugFeatures.nonSparse)
-  setDT(training)
-  training <- training[rawDrugFeatures.nonSparse, on = "SUBSTANCENAME", nomatch = 0]
-  training[,SUBSTANCENAME := NULL]
+  setDT(x)
+  x <- x[rawDrugFeatures.nonSparse, on = "SUBSTANCENAME", nomatch = 0]
+  x[,SUBSTANCENAME := NULL]
   
   # aggregate by .(enrolid, quarter) to retrieve quantitative features using sum()
-  names <- colnames(training)[3:ncol(training)]
-  training.feat <- 
-    dcast(
-      training, 
-      ENROLID ~ QUARTER, 
-      fun.aggregate = sum, # summarise frequency for quantitative features
-      sep = ".x.", 
-      value.var = names, 
-      fill = 0) 
+  names <- setdiff(colnames(x),c("ENROLID","QUARTER"))
+  x.feat <- dcast(x, ENROLID ~ QUARTER, fun.aggregate = sum, sep = ".x.", value.var = names, fill = 0) # summarise frequency for quantitative features
   
   # drop features with don't occur in at least nPatFeatThres cases
-  colnames <- training.feat[, lapply(.SD, function(x) sum(x>0) < nPatFeatThres) , .SDcols = !"ENROLID"]
+  colnames <- x.feat[, lapply(.SD, function(x) sum(x>0) < nPatFeatThres) , .SDcols = !"ENROLID"]
   delCols  <- as.numeric(which(unlist(colnames)))
   delCols  <- delCols +1 # shift by 1 because column ENROLID was omitted 2 rows above
-  cat("\n","Treatment features:\n",ncol(training.feat)- 1 - length(delCols),"of",ncol(training.feat)-1,"feature columns appear in at least", nPatFeatThres,"patients","\n",sep = " ")
-  training.feat <- training.feat[, -delCols, with = FALSE]
+  cat("\n","Treatment features:\n",ncol(x.feat)- 1 - length(delCols),"of",ncol(x.feat)-1,"feature columns appear in at least", nPatFeatThres,"patients","\n",sep = " ")
+  x.feat <- x.feat[, -delCols, with = FALSE]
   
-  return(training.feat)
+  return(x.feat)
+  } else if(length(trainingFeatures)>0) {
+    # filter data
+    idx <- patQuartTreat$ENROLID %in% enrolment$ENROLID
+    x <- patQuartTreat[idx, ] 
+    
+    # join drug features to treatment  
+    setDT(x)
+    x <- x[rawDrugFeatures, on = "SUBSTANCENAME", nomatch=0] # data.table inner join
+    
+    # aggregate by .(enrolid, quarter) to retrieve quantitative features using sum()
+    x[,SUBSTANCENAME := NULL]
+    names <- setdiff(colnames(x),c("ENROLID","QUARTER"))
+    x.feat <- dcast(x,ENROLID ~ QUARTER, fun.aggregate = sum, sep = ".x.", value.var = names, fill = 0)  # summarise frequency for quantitative features
+    
+    # omit cols, which were not defined as trainingFeatures
+    cols <- c("ENROLID", trainingFeatures)
+    x.feat <- x.feat[,colnames(x.feat) %in% cols, with = FALSE]
+    
+    return(x.feat)
+  }  
 }
 
 ####################################################################################################
 
 # efficient attachment of raw drug features to patients treatment table
 
-AddDiagnosisFeatures <- function(rawDiseaseFeatures, patQuartDiag, enrolment) {
+AddDiagnosisFeatures <- function(rawDiseaseFeatures, patQuartDiag, enrolment, trainingFeatures = NULL) {
   
-  train.idx <- patQuartDiag$ENROLID %in% enrolment$train.data$ENROLID
-  training  <- patQuartDiag[train.idx, ] 
+  if(length(trainingFeatures) == 0) {
+  idx <- patQuartDiag$ENROLID %in% enrolment$ENROLID
+  x  <- patQuartDiag[idx, ] 
   
   # pre-filtering: drop rare features
-  ###################################
-  nPat          <- n_distinct(training$ENROLID)
+  nPat          <- n_distinct(x$ENROLID)
   nPatFeatThres <- ceiling(nPat * 0.05)
   
-  setDT(training)
+  setDT(x)
   setDT(rawDiseaseFeatures)
   
-  # qualitative aggregation
-  rawDiseaseFeatures$ICD9 <- as.numeric(rawDiseaseFeatures$ICD9)
+  ## qualitative aggregation
+  suppressWarnings(rawDiseaseFeatures$ICD9 <- as.numeric(rawDiseaseFeatures$ICD9))
   rawDiseaseFeatures      <- rawDiseaseFeatures[, lapply(.SD, max), by = ICD9]
   
-  # maximum occurrence of a diagnosis in any quarter in the training dataset
+  ## maximum occurrence of a diagnosis in any quarter in the x dataset
   diagMaxN <-
-    training %>% 
+    x %>% 
     group_by(DIAG, QUARTER) %>% 
     tally() %>% # n diagnosis per quarter
     ungroup() %>% 
@@ -127,71 +139,97 @@ AddDiagnosisFeatures <- function(rawDiseaseFeatures, patQuartDiag, enrolment) {
   diagMaxN      <- diagMaxN[complete.cases(diagMaxN),]
   setDT(diagMaxN)
   
-  # get non-sparse disease features (feature occurs in at least nPatFeatThres patients in *any* quarter)
-  training.maxN <- merge(diagMaxN,rawDiseaseFeatures, by.x = "DIAG", by.y="ICD9", all.x = 0) 
-  setDF(training.maxN)
-  omitCols                  <- which(colnames(training.maxN) %in% c("DIAG","max"))
-  training.maxN[,-omitCols] <- training.maxN[,-omitCols] * training.maxN$max
-  training.maxN$max         <- c()
-  omitCols                  <- which(colnames(training.maxN) %in% c("DIAG"))
-  nonSparseFeatures         <- colSums(training.maxN[,-omitCols]) >= nPatFeatThres
-  nonSparseFeatures         <- c(TRUE, nonSparseFeatures) # 1st TRUE = DIAG
-  rawDiseaseFeatures.nonSparse <- 
-    rawDiseaseFeatures[,nonSparseFeatures, with = FALSE] %>% 
-    filter(ICD9 %in% training.maxN$DIAG)
+  ## get non-sparse disease features (feature occurs in at least nPatFeatThres patients in *any* quarter)
+  x.maxN <- merge(diagMaxN,rawDiseaseFeatures, by.x = "DIAG", by.y="ICD9", all.x = 0) 
+  setDF(x.maxN)
+  omitCols <- which(colnames(x.maxN) %in% c("DIAG","max"))
+  x.maxN[,-omitCols] <- x.maxN[,-omitCols] * x.maxN$max
+  x.maxN$max <- c()
+  omitCols <- which(colnames(x.maxN) %in% c("DIAG"))
+  nonSparseFeatures <- colSums(x.maxN[,-omitCols]) >= nPatFeatThres
+  nonSparseFeatures <- c(TRUE, nonSparseFeatures) # 1st TRUE = DIAG
+  rawDiseaseFeatures.nonSparse <- rawDiseaseFeatures[,nonSparseFeatures, with = FALSE] %>% filter(ICD9 %in% x.maxN$DIAG)
   
-  # match pre-filtered disease features to training dataset
+  ## match pre-filtered disease features to x dataset
   setDT(rawDiseaseFeatures.nonSparse)
-  setDT(training)
-  training$DIAG <- as.numeric(training$DIAG)
-  training <- merge(training, rawDiseaseFeatures.nonSparse, by.x = "DIAG", by.y="ICD9", all.x = 0) # data.table inner join
-  training[,DIAG := NULL]
+  setDT(x)
+  suppressWarnings(x$DIAG <- as.numeric(x$DIAG))
+  x <- merge(x, rawDiseaseFeatures.nonSparse, by.x = "DIAG", by.y="ICD9", all.x = 0) # data.table inner join
+  x[,DIAG := NULL]
   
   # aggregate by .(enrolid, quarter) to retrieve qualitative features using max()
-  names <- colnames(training)[3:ncol(training)]
-  training.feat <- 
-    dcast(
-      training, ENROLID ~ QUARTER, 
-      fun.aggregate = max, # take max() of the boolean features to retrieve qualitative aggregation
-      sep = ".x.", 
-      value.var = names, 
-      fill = 0) 
+  names <- setdiff(colnames(x),c("ENROLID","QUARTER"))
+  x.feat <- dcast(x, ENROLID ~ QUARTER, fun.aggregate = max, sep = ".x.", value.var = names, fill = 0) # take max() of the boolean features to retrieve qualitative aggregation
   
   ## drop features with don't occur in at least nPatFeatThres cases
-  delCols <- training.feat[, lapply(.SD, function(x) sum(x>0) < nPatFeatThres) , .SDcols = !"ENROLID"]
+  delCols <- x.feat[, lapply(.SD, function(x) sum(x>0) < nPatFeatThres) , .SDcols = !"ENROLID"]
   delCols <- as.numeric(which(unlist(delCols)))
   delCols <- delCols +1 # shift by 1 because column ENROLID was omitted 2 rows above
-  cat("\n","Diagnosis features: \n",ncol(training.feat)- 1 - length(delCols),"of",ncol(training.feat)-1,"feature columns appear in at least", nPatFeatThres,"patients \n",sep = " ")
-  training.feat <- training.feat[, -delCols, with = FALSE]
+  cat("\n","Diagnosis features: \n",ncol(x.feat)- 1 - length(delCols),"of",ncol(x.feat)-1,"feature columns appear in at least", nPatFeatThres,"patients \n",sep = " ")
+  x.feat <- x.feat[, -delCols, with = FALSE]
   
-  return(training.feat)
+  return(x.feat)
+  } else if(length(trainingFeatures)>0) {
+    
+    # filter data
+    idx <- patQuartDiag$ENROLID %in% enrolment$ENROLID
+    x  <- patQuartDiag[idx, ]
+    
+    # coerce format
+    suppressWarnings(x$DIAG <- as.numeric(x$DIAG))
+    x <- x[complete.cases(x),]
+    
+    # qualitative aggregation
+    setDT(x)
+    setDT(rawDiseaseFeatures)
+    suppressWarnings(rawDiseaseFeatures$ICD9 <- as.numeric(rawDiseaseFeatures$ICD9))
+    rawDiseaseFeatures <- rawDiseaseFeatures[, lapply(.SD, max), by = ICD9]
+    rawDiseaseFeatures <- rawDiseaseFeatures[complete.cases(rawDiseaseFeatures),]
+    
+    # get non-sparse disease features (feature occurs in at least nPatFeatThres patients in *any* quarter)
+    x <- merge(x,rawDiseaseFeatures, by.x = "DIAG", by.y="ICD9", all.x = 0) 
+    x[,DIAG := NULL]
+    
+    # aggregate by .(enrolid, quarter) to retrieve qualitative features using max()
+    names <- setdiff(colnames(x),c("ENROLID","QUARTER"))
+    x.feat <- dcast(x, ENROLID ~ QUARTER, fun.aggregate = max, sep = ".x.", value.var = names, fill = 0) # take max() of the boolean features to retrieve qualitative aggregation
+    
+    # omit cols, which were not defined as trainingFeatures
+    cols <- c("ENROLID", trainingFeatures)
+    x.feat <- x.feat[,colnames(x.feat) %in% cols, with = FALSE]
+    
+    return(x.feat)
+  }
 }
 
 ####################################################################################################
 
-# This is a convenience wrapper to compute the feature matrices for the particular main-comorbidity
-# <enrolment> 
+# This is a convenience wrapper to compute the training feature matrices for the particular main-comorbidities
 
-GetMCFeatureMatrix <- function(rawDrugFeatures, patQuartTreat, mainComorb.Enrolment, rawDiseaseFeatures, patQuartDiag, patFeatures) {
+GetTrainingFeatureMatrix <- function(rawDrugFeatures, patQuartTreat, trainingData, rawDiseaseFeatures, patQuartDiag, patFeatures) {
   # treatment features
+  cat("\n Add treatment features...\n")
   mainComorb.train.treat <- 
     AddTreatmentFeatures(
       rawDrugFeatures = drug.features,
       patQuartTreat = P.QUART.SUBST,
-      enrolment = mainComorb.Enrolment)
+      enrolment = trainingData)
   
   # disease features
+  cat("\n Add disease features...\n")
   mainComorb.train.diag <- 
     AddDiagnosisFeatures(
       rawDiseaseFeatures = DISEASES.FEATMAT, 
       patQuartDiag = P.QUART.DIAG,
-      enrolment = mainComorb.Enrolment)
+      enrolment = trainingData)
   
   # patient features (age, sex, region, MHSAFL, HOSPFL, ...)
-  mainComorb.train.pat <- patFeatures[ENROLID %in% mainComorb.Enrolment$train.data$ENROLID,]
+  cat("\n Filter patient features...\n")
+  mainComorb.train.pat <- patFeatures[ENROLID %in% trainingData$ENROLID,]
   
   # patient survival data (ENROLID, time, status)
-  mainComorb.train.surv <- mainComorb.Enrolment$train.data
+  cat("\n Retrieve survival features...\n")
+  mainComorb.train.surv <- trainingData
   
   # create feature matrix
   mainComorb.featMat <- 
@@ -201,23 +239,76 @@ GetMCFeatureMatrix <- function(rawDrugFeatures, patQuartTreat, mainComorb.Enrolm
     inner_join(mainComorb.train.treat)
   
   # check for features later than quarter 2
+  cat("\n Join all features...\n")
   source("functions/NoMedicalHistoryColumns.R")
   noMHColumns <- NoMedicalHistoryColumns(mainComorb.featMat)
   
   return(
     list(
-      featureMatrix = mainComorb.featMat,
-      treatmentFeatures = mainComorb.train.treat,
-      diagnosisFeatures = mainComorb.train.diag,
-      patientFeatures = mainComorb.train.pat,
-      survivalFeatures = mainComorb.train.surv
-      )
+      featureMatrix = mainComorb.featMat
+      # treatmentFeatures = mainComorb.train.treat,
+      # diagnosisFeatures = mainComorb.train.diag,
+      # patientFeatures = mainComorb.train.pat,
+      # survivalFeatures = mainComorb.train.surv
     )
+  )
 }
 
 
 ####################################################################################################
+# This is a convenience wrapper to compute the test feature matrices for the particular main-comorbidities
 
+GetTestFeatureMatrix <- function(trainingFeatures, rawDrugFeatures, patQuartTreat, testData, rawDiseaseFeatures, patQuartDiag, patFeatures) {
+  
+  # treatment features
+  cat("\n","Add treatment Features...","\n")
+  mainComorb.test.treat <- 
+    AddTreatmentFeatures(
+      rawDrugFeatures = drug.features,
+      patQuartTreat = P.QUART.SUBST,
+      enrolment = testData, 
+      trainingFeatures = trainingFeatures)
+  
+  # disease features
+  cat("\n Add disease features...\n")
+  mainComorb.test.diag <- 
+    AddDiagnosisFeatures(
+      rawDiseaseFeatures = DISEASES.FEATMAT, 
+      patQuartDiag = P.QUART.DIAG,
+      enrolment = testData, 
+      trainingFeatures = trainingFeatures)
+  
+  # patient features (age, sex, region, MHSAFL, HOSPFL, ...)
+  cat("\n Filter patient features...\n")
+  setDT(patFeatures)
+  cols <- c("ENROLID", trainingFeatures)
+  mainComorb.test.pat <- patFeatures[ENROLID %in% testData$ENROLID, colnames(patFeatures) %in% cols, with = FALSE]
+  
+  # patient survival data (ENROLID, time, status)
+  cat("\n Retrieve survival features...\n")
+  mainComorb.test.surv <- testData
+  
+  # create feature matrix
+  cat("\n Join all features...\n")
+  mainComorb.featMat <- 
+    mainComorb.test.surv %>% 
+    inner_join(mainComorb.test.pat) %>%
+    inner_join(mainComorb.test.diag) %>%
+    inner_join(mainComorb.test.treat)
+  
+  # drop columns not covered by feature selection
+  
+  return(
+    list(
+      featureMatrix = mainComorb.featMat
+      # treatmentFeatures = mainComorb.test.treat,
+      # diagnosisFeatures = mainComorb.test.diag,
+      # patientFeatures = mainComorb.test.pat,
+      # survivalFeatures = mainComorb.test.surv
+    ))
+}
+
+####################################################################################################
 
 featureSelectionMRMR <- function(featureMatrix, feature_count = 500){
   setDF(featureMatrix)

@@ -3,12 +3,13 @@ title: "descriptive statistics of adult (AGE >= 18)"
 subtitle: "newIXDAYS"
 author: "Thomas Gerlach"
 output: html_notebook
-date: "2017 FEB 16"
+date: "2017 FEB 23"
 ---
 
 # setup global variables
 ```{r, echo = FALSE, include = FALSE}
 rm(list=setdiff(ls(),"TABLE04.2"))
+library(data.table)
 knitr::opts_chunk$set(
   warning = FALSE,
   fig.width = 10,
@@ -170,6 +171,32 @@ ggplot(main.comorb.first.ixday, aes(IXDAYS)) +
   geom_hline(yintercept = c(0.8, 0.9), colour = "red", linetype = "longdash", size=0.1) +
   theme(panel.background = element_rect(fill = "grey"))
 
+```
+
+# ECDF of first treatment with an AED
+```{r}
+
+PATIENTS_AGE_REGION <- KeepIncidentAndCensored(PATIENTS_AGE_REGION)
+n_distinct(PATIENTS_AGE_REGION$ENROLID)
+
+firstAEDTreatment <- 
+  PATIENTS_AGE_REGION %>% 
+  filter(isAED == TRUE) %>% 
+  select(ENROLID, IXDAYS) %>% 
+  distinct() %>% 
+  group_by(ENROLID) %>% mutate(firstAEDTreatment = min(IXDAYS)) %>% 
+  ungroup() %>% dplyr::select(-IXDAYS) %>% distinct()
+
+head(firstAEDTreatment)
+n_distinct(firstAEDTreatment$ENROLID)
+
+ggplot(firstAEDTreatment, aes(firstAEDTreatment)) +  
+  stat_ecdf() + 
+  ggtitle(paste("ECDF of first treatment with an AED \n blue line = -730, 180 days, red lines = 80%, 90%")) +
+  geom_vline(xintercept = c(-730,180), colour = "blue", linetype = "longdash", size = 0.1) +
+  geom_hline(yintercept = c(0.8, 0.9), colour = "red", linetype = "longdash", size=0.1)
+
+summary(firstAEDTreatment$firstAEDTreatment)
 ```
 
 # MAIN.COMORB
@@ -375,7 +402,6 @@ ggplot(first.ixdays.vs.buffer.normalized, aes(buffer.int)) +
 ```{r, fig.height=10, fig.width=10}
 # get max observation date for each patient
 # pat.maxIxdays
-library(data.table)
 # for patients with an MC, get event date for incident main-comorbidity
 # main.comorb.first.ixday
 firstIxday.byMC <- dcast(main.comorb.first.ixday %>% filter(IXDAYS >= 0), ENROLID ~ MAIN.COMORB, value.var = "IXDAYS")
