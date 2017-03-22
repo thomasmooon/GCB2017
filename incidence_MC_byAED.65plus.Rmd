@@ -1,0 +1,464 @@
+---
+title: "prevalence and incidence of Main-co-morbidities"
+subtitle: "AGE: 65+"
+author: "Thomas Gerlach"
+date: "2017 MAR 21"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE, echo = FALSE }
+rm(list=setdiff(ls(),"all_events.icd9"))
+library(data.table)
+knitr::opts_chunk$set(warning = FALSE, fig.width = 10,fig.height = 7)
+
+source("z_start.R") # initalize netezza DB, load core data
+
+params <- vector("list")
+params$incidence.buffer <- 180
+params$EPILEPSY <-  c("Convulsions","Epilepsy, recurrent seizures, convulsions","Partial epilepsy", "Epilepsy", "Generalized convulsive epilepsy" )
+
+if(!exists("all_events.icd9")) load("data/re-do_epd183/all_events.icd9.RData")
+
+PATIENTS_AGE_REGION <-  as.data.frame(all_events.icd9$data)
+setnames(PATIENTS_AGE_REGION, c("GENNME","IDXDAYS"), c("SUBSTANCENAME","IXDAYS"))
+```
+
+
+# filter PATIENTS 
+```{r, include = FALSE}
+# Keep only patients within valid time period 
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(has2yMH == TRUE)
+
+# adult only (AGE >= 65)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 65) %>% distinct()
+
+# only patients which were treated with AEDs
+pat.with.aeds <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% select(ENROLID) %>% distinct()
+PATIENTS_AGE_REGION <-   PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
+
+## add main comorbidities
+PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "adult")
+```  
+
+#  global variables
+```{r}
+# number of patients
+nPat <- PATIENTS_AGE_REGION %>% dplyr::select(ENROLID) %>% distinct() %>% tally()
+```
+
+
+# barplot: number of patients per AED:
+```{r}
+
+patPerAED <-
+  PATIENTS_AGE_REGION %>% 
+  filter(isAED == TRUE) %>% 
+  dplyr::select(ENROLID, SUBSTANCENAME) %>% 
+  distinct() %>% 
+  group_by(SUBSTANCENAME) %>% 
+  tally() %>% 
+  distinct() %>% 
+  mutate(freq = round(n/nPat$n,2))
+
+ggplot(patPerAED, aes(x=reorder(SUBSTANCENAME,-n), y=n/nPat$n)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle(paste("AED frequency \nAGE >= 18,",nPat$n,"patients")) + 
+  xlab("SUBSTANCENAME") + 
+  ylab("% population") +  geom_text(aes(label=n), vjust=0, hjust=-1) +
+  scale_y_continuous(labels = scales::percent) +
+  ylim(0,1)
+
+```
+
+# general summary statistics
+```{r}
+
+# number patients per AED
+nPat_byAED <- 
+  PATIENTS_AGE_REGION %>%  
+  filter(isAED == TRUE) %>%
+  select(SUBSTANCENAME, ENROLID) %>% distinct() %>%
+  group_by(SUBSTANCENAME) %>%
+  tally(sort = TRUE)
+  
+p1 <- 
+  ggplot(nPat_byAED, aes(x=reorder(SUBSTANCENAME,-n), y=n/nPat$n)) + 
+  geom_bar(stat="identity") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Distribution all AEDs \n AGE >= 18") + 
+  xlab("SUBSTANCENAME") + 
+  ylab("% population") +  
+  geom_text(aes(label=n), vjust=0) +
+  scale_y_continuous(labels=scales::percent)
+
+
+# age distribution, all AEDs
+title <- paste("AGE histogram \n all AEDs, AGE >= 18")
+p2 <-
+  ggplot(PATIENTS_AGE_REGION %>% dplyr::select(ENROLID, AGE) %>% distinct(), aes(AGE)) +
+  geom_histogram(aes(y = ..density..), bins = 100) +
+  ggtitle(title) +
+  scale_y_continuous(labels = scales::percent)
+
+subplot(1,2)
+print(p1, vp= vplayout(1,1))
+print(p2, vp= vplayout(1,2))
+  
+# age distribution, all AEDs, by each AED
+x <-
+  PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% 
+  select(SUBSTANCENAME, AGE, ENROLID)  %>% 
+  distinct()
+
+ggplot(x, aes(AGE)) + 
+  geom_bar(aes(y=(..count..)/sum(..count..))) +
+  facet_wrap(~ SUBSTANCENAME) +
+  theme(plot.title = element_text(size=10)) +
+  ggtitle("Age distribution by AED ") +
+  scale_y_continuous(labels=scales::percent)
+
+
+```
+
+# prevalence vs. incidence
+
+## summary
+```{r}
+
+# count prevalent patients per MC
+prev.allAEDs <- 
+  PATIENTS_AGE_REGION %>% 
+  filter(MAIN.COMORB != "") %>% 
+  select(ENROLID, MAIN.COMORB) %>% 
+  distinct() %>% 
+  group_by(MAIN.COMORB) %>% 
+  tally() %>% 
+  dplyr::rename(n.prevalent = n)
+
+# count incident patients 
+inc.unspec <- 
+  aggregate(
+    IXDAYS ~.,
+    data =   
+      PATIENTS_AGE_REGION %>% 
+      filter(MAIN.COMORB != "") %>% 
+      select(IXDAYS, ENROLID, MAIN.COMORB) %>%
+      distinct(),
+  FUN = min) %>% 
+  filter(IXDAYS >= 180) %>% # incident only
+  dplyr::select(ENROLID) %>%  # incident patients
+  distinct() %>% 
+  tally() %>% 
+  rename(sum.incident = n)
+
+# count incident patients by MC
+inc.allAEDs <- 
+  aggregate(
+    IXDAYS ~.,
+    data =   
+      PATIENTS_AGE_REGION %>% 
+      filter(MAIN.COMORB != "") %>% 
+      select(IXDAYS, ENROLID, MAIN.COMORB) %>%
+      distinct(),
+  FUN = min) %>% 
+  filter(IXDAYS >= 180) %>% # incident only
+  dplyr::select(-IXDAYS) %>% # only MAIN.COMORB + ENROLID remain
+  distinct() %>% 
+  group_by(MAIN.COMORB) %>% 
+  tally() %>% 
+  dplyr::rename(n.incident = n)
+
+prev.vs.inc <- left_join(prev.allAEDs, inc.allAEDs, by = "MAIN.COMORB")
+prev.vs.inc <- within(prev.vs.inc, percent.incident <- round(n.incident/n.prevalent,2))
+prev.vs.inc <- prev.vs.inc[order(-prev.vs.inc$n.prevalent),]
+row.names(prev.vs.inc) <- c()
+
+sum.prevalent <- PATIENTS_AGE_REGION %>%  filter(MAIN.COMORB != "") %>% select(ENROLID) %>%  distinct() %>% tally()
+cat("Sum of prevalent patients: ", sum.prevalent$n,"\n\n") #############################################################
+cat("Sum of incident patients: ", inc.unspec$sum.incident,"\n\n")
+
+cat("Incidence rates per main-comorbidity:")
+knitr::kable(prev.vs.inc)
+
+```
+
+# cluster patients along main-comorbidities
+
+## prevalent
+```{r}
+prev.mc.patient.clust <-
+  PATIENTS_AGE_REGION %>%
+  filter(MAIN.COMORB != "") %>%
+  select(MAIN.COMORB, ENROLID) %>% 
+  distinct()
+
+prev.mc.patient.clust$value <- TRUE
+prev.mc.patient.clust <- spread(data = prev.mc.patient.clust, key = MAIN.COMORB, fill = FALSE, value = value)
+prev.mc.patient.clust$ENROLID <- c()
+
+prev.joint.prob <-
+  sapply(
+    prev.mc.patient.clust,
+    FUN = function(x1) sapply(
+      prev.mc.patient.clust,
+      FUN = function(x2) 
+        round(mean(x1 & x2) / mean(x1), 2)
+  )
+  )
+
+colnames(prev.joint.prob) <- paste("Given",colnames(prev.joint.prob))
+row.names(prev.joint.prob) <- paste("Observed",row.names(prev.joint.prob))
+
+knitr::kable(prev.joint.prob)
+
+heatmap.2(
+  data.matrix(prev.joint.prob),
+  dendrogram = "none",
+  margin = c(10, 10),
+  cexRow = 0.75, cexCol = 0.75,
+  Rowv = FALSE,  Colv = FALSE,
+  col = bluered(10), 
+  cellnote = prev.joint.prob,
+  notecol = "black",
+  srtCol = 45,
+  main = "joint occurrence prevalent main-comorbidities"
+)
+
+```
+
+## incident
+```{r}
+inc.mc.patient.clust <-
+  aggregate(
+    IXDAYS ~ .,
+    data =
+      PATIENTS_AGE_REGION %>%
+      filter(MAIN.COMORB != "") %>%
+      select(IXDAYS, ENROLID, MAIN.COMORB) %>%
+      distinct(),
+    FUN = min
+  ) %>%
+  filter(IXDAYS >= 180) %>%
+  dplyr::select(-IXDAYS) %>%
+  distinct()
+
+inc.mc.patient.clust$value <- TRUE
+
+inc.mc.patient.clust <-
+  spread(
+    data = inc.mc.patient.clust,
+    key = MAIN.COMORB,
+    fill = FALSE,
+    value = value
+  )
+
+inc.mc.patient.clust$ENROLID <- c()
+
+inc.joint.prob <-
+  sapply(
+    inc.mc.patient.clust,
+    FUN = function(x1)
+      sapply(
+        inc.mc.patient.clust,
+        FUN = function(x2)
+          round(mean(x1 & x2) / mean(x1), 2)
+      )
+  )
+
+colnames(inc.joint.prob) <- paste("Given",colnames(inc.joint.prob))
+row.names(inc.joint.prob) <- paste("Observed",row.names(inc.joint.prob))
+
+knitr::kable(inc.joint.prob)
+
+heatmap.2(
+  data.matrix(inc.joint.prob),
+  dendrogram = "none",
+  margin = c(10, 10),
+  cexRow = 0.75, cexCol = 0.75,
+  Rowv = FALSE,
+  Colv = FALSE,
+  col = bluered(10), 
+  cellnote = inc.joint.prob,
+  notecol = "black",
+  srtCol = 45,
+  main = "joint occurrence incident main-comorbidities"
+)
+
+```
+### prevalence-incidence
+
+How big is the difference between prevalence VS incidence "joint-comorbidity-occurrence" ?
+
+Positive difference: Prevalence probability is higher.
+
+Negative difference: Incidence probability is higher.
+```{r}
+diff <- prev.joint.prob - inc.joint.prob
+knitr::kable(diff)
+```
+
+
+## by AED
+
+support function
+```{r}
+
+IncPrevByAED <- function(PATIENTS_AGE_REGION_, AED) {
+
+ENROLID.subset <-
+  PATIENTS_AGE_REGION_ %>% 
+  filter(SUBSTANCENAME == AED) %>% 
+  dplyr::select(ENROLID) %>% 
+  distinct()
+
+# count prevalent patients per MC
+prev.allAEDs <- 
+  PATIENTS_AGE_REGION_ %>% 
+  filter(MAIN.COMORB != "") %>% 
+  filter(ENROLID %in% ENROLID.subset$ENROLID) %>% 
+  select(ENROLID, MAIN.COMORB) %>% 
+  distinct() %>% 
+  group_by(MAIN.COMORB) %>% 
+  tally() %>% 
+  dplyr::rename(n.prevalent = n)
+
+# count incident patients by MC
+inc.allAEDs <- 
+  aggregate(
+    IXDAYS ~.,
+    data =   
+      PATIENTS_AGE_REGION_ %>% 
+      filter(MAIN.COMORB != "") %>% 
+      filter(ENROLID %in% ENROLID.subset$ENROLID) %>% 
+      select(IXDAYS, ENROLID, MAIN.COMORB) %>%
+      distinct(),
+  FUN = min) %>% 
+  filter(IXDAYS >= 180) %>% 
+  dplyr::select(-IXDAYS) %>% 
+  group_by(MAIN.COMORB) %>% 
+  tally() %>% 
+  dplyr::rename(n.incident = n)
+
+prev.vs.inc <- left_join(prev.allAEDs, inc.allAEDs, by = "MAIN.COMORB")
+prev.vs.inc[is.na(prev.vs.inc)] <- 0
+
+prev.vs.inc <- within(prev.vs.inc, percent.incident <- round(n.incident/n.prevalent,2))
+prev.vs.inc <- prev.vs.inc[order(-prev.vs.inc$n.prevalent),]
+row.names(prev.vs.inc) <- c()
+
+AED <- paste(AED,"\n",length(ENROLID.subset$ENROLID),"patients")
+prev.vs.inc <- cbind(AED, prev.vs.inc)
+return(prev.vs.inc)
+}
+```
+
+compute statistics
+```{r}
+AEDs <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% select(SUBSTANCENAME) %>% distinct() 
+AEDs <- AEDs$SUBSTANCENAME
+
+prev.vs.inc.byAED <- IncPrevByAED(PATIENTS_AGE_REGION, AEDs[1])
+for (AED in AEDs[2:length(AEDs)]) {
+  prev.vs.inc.byAED <- rbind(prev.vs.inc.byAED, try(IncPrevByAED(PATIENTS_AGE_REGION, AED), silent = TRUE))
+}
+prev.vs.inc.byAED <- prev.vs.inc.byAED[complete.cases(prev.vs.inc.byAED),]
+```
+
+plot statistics
+```{r, fig.width=10, fig.height=10}
+
+# plot
+prev.vs.inc.byAED$percent.incident <- as.numeric(prev.vs.inc.byAED$percent.incident)
+ggplot(prev.vs.inc.byAED, aes(x = MAIN.COMORB, y=percent.incident)) + 
+  geom_bar(stat="identity") + 
+  facet_wrap(~ AED,nrow = 3) +
+  theme(plot.title = element_text(size=10)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("main-comorbidities incidence rates by AED") +
+  xlab("main-comorbidity") +
+  ylab("% population") +
+  guides(fill=guide_legend(ncol=1)) +
+  geom_text(aes(label=paste(percent.incident*100,"% =",n.incident,"/",n.prevalent)), hjust=-0, size = 3) +
+  ylim(0,0.75) +
+  coord_flip()
+
+
+
+```
+
+plot statistics: only top 10 AEDs, with labeled min/max incidence rates
+```{r, fig.width=15, fig.height=10}
+AEDs <- 
+  PATIENTS_AGE_REGION %>%
+  filter(isAED == TRUE) %>% 
+  dplyr::select(SUBSTANCENAME,ENROLID) %>% 
+  distinct() %>% 
+  group_by(SUBSTANCENAME) %>% 
+  tally(sort = TRUE)
+
+AEDs.top10 <- AEDs %>% top_n(10,n)
+AEDs.top10 <- paste(AEDs.top10$SUBSTANCENAME,"\n",AEDs.top10$n,"patients")
+prev.vs.inc.byAED.top10 <- prev.vs.inc.byAED %>% filter(AED %in% AEDs.top10)
+
+# label min/max incident values
+inc.min <- aggregate(percent.incident ~ MAIN.COMORB, data = prev.vs.inc.byAED.top10, FUN = function(x) min(x) )
+inc.max <- aggregate(percent.incident ~ MAIN.COMORB, data = prev.vs.inc.byAED.top10, FUN = function(x) max(x) )
+prev.vs.inc.byAED.top10$extremum <- ""
+
+## label min
+for (k in 1:nrow(inc.min)) {
+  mc <- inc.min$MAIN.COMORB[k]
+  thres <- inc.min$percent.incident[k]
+  label <- which(prev.vs.inc.byAED.top10$MAIN.COMORB == mc & prev.vs.inc.byAED.top10$percent.incident == thres)
+  prev.vs.inc.byAED.top10$extremum[label] <- "min"
+}
+
+## label max
+for (k in 1:nrow(inc.max)) {
+  mc <- inc.max$MAIN.COMORB[k]
+  thres <- inc.max$percent.incident[k]
+  label <- which(prev.vs.inc.byAED.top10$MAIN.COMORB == mc & prev.vs.inc.byAED.top10$percent.incident == thres)
+  prev.vs.inc.byAED.top10$extremum[label] <- "max"
+}
+
+prev.vs.inc.byAED.top10$extremum <- factor(prev.vs.inc.byAED.top10$extremum, levels=c("min","","max"), ordered = TRUE)
+
+ggplot(prev.vs.inc.byAED.top10, aes(x = MAIN.COMORB, y=percent.incident, fill=extremum)) + 
+  geom_bar(stat="identity") + 
+  facet_wrap(~ AED,nrow = 3) +
+  theme(plot.title = element_text(size=10)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("top-10 main-comorbidities incidence rates by AED") +
+  xlab("main-comorbidity") + ylab("% population") +
+  guides(fill=guide_legend(ncol=1)) +
+  ylim(0,0.75) +
+  geom_text(aes(label=paste(percent.incident*100,"% =",n.incident,"/",n.prevalent)), hjust=-0.1) +
+  coord_flip()
+```
+
+test for signifikant difference in incidence frequency by AED (top 10 only)
+```{r}
+prev.vs.inc.byAED.top10$n.prevalent <- as.numeric(prev.vs.inc.byAED.top10$n.prevalent)
+prev.vs.inc.byAED.top10$n.incident <- as.numeric(prev.vs.inc.byAED.top10$n.incident)
+prev.vs.inc.byAED.top10$n.nonInc <- prev.vs.inc.byAED.top10$n.prevalent - prev.vs.inc.byAED.top10$n.incident
+
+chi.table <- prev.vs.inc.byAED.top10 %>% select(MAIN.COMORB,AED,n.incident,n.nonInc)
+library(data.table)
+setDT(chi.table)
+chi.table.x <- gather(chi.table, key = "cond", value = "n", 3:4)
+chi.table.x <- dcast(chi.table.x, MAIN.COMORB + cond ~ AED, value.var = "n")
+
+m <- unique(chi.table.x$MAIN.COMORB)
+c.test <- c()
+for(mm in m){
+tmp <- chisq.test(chi.table.x %>%  filter(MAIN.COMORB == mm) %>% select(-MAIN.COMORB,-cond))
+c.test <- c(c.test, tmp$p.value)
+}
+
+knitr::kable(data.frame(mainComorb=m, chisqTest.pval=c.test))
+
+```
+

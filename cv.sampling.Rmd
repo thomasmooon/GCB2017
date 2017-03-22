@@ -1,0 +1,39 @@
+---
+title: "cross validation assignment"
+output: html_notebook
+---
+
+
+# setup
+```{r}
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.RData") # source: patientDescriptors.Rmd
+```
+
+# apply CV schema
+```{r}
+require(data.table)
+setDT(censored.incident)
+cohort <- unique(censored.incident$status)
+cv <- vector("list",length(cohort))
+names(cv) <- cohort
+for(c in cohort) {cv[[c]]$data <- censored.incident[status == c,][,c("status","time") := NULL]}
+
+#Randomly shuffle the data
+seed <- 1
+for(c in cohort) {set.seed(seed); cv[[c]]$data <- sample(cv[[c]]$data$ENROLID); seed <- seed + 1}
+
+#Create k equally size folds
+k <- 10
+for(c in cohort) {
+  cv[[c]]$folds <- cut(seq(1,length(cv[[c]]$data)),breaks=k,labels=FALSE)
+  cv[[c]]$folds <- data.table(fold = cv[[c]]$folds, ENROLID = cv[[c]]$data)
+  }
+
+# foldsizes
+lapply(cv, function(x) x$folds[,.N, by=fold])
+
+# save
+Sys.Date()
+save(cv, file = "cv.sampling.RData", compress = TRUE)
+```
+

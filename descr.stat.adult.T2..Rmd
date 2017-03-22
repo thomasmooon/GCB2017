@@ -1,49 +1,29 @@
 ---
 title: "descriptive statistics of adult (AGE >= 18)"
-subtitle: "newIXDAYS"
+subtitle: "re-do epd183"
 author: "Thomas Gerlach"
 output: html_notebook
-date: "2017 FEB 23"
+date: "2017 MAR 21"
 ---
 
 # setup global variables
 ```{r, echo = FALSE, include = FALSE}
-rm(list=setdiff(ls(),"TABLE04.2"))
+rm(list=setdiff(ls(),"all_events.icd9"))
 library(data.table)
-knitr::opts_chunk$set(
-  warning = FALSE,
-  fig.width = 10,
-  fig.height = 7
-  )
+knitr::opts_chunk$set(warning = FALSE, fig.width = 10,fig.height = 7)
 
 source("z_start.R") # initalize netezza DB, load core data
 
 params <- vector("list")
 params$incidence.buffer <- 180
-params$EPILEPSY <-
-  c(
-  "Convulsions",
-  "Epilepsy, recurrent seizures, convulsions",
-  "Partial epilepsy",
-  "Epilepsy",
-  "Generalized convulsive epilepsy"
-  )
+params$EPILEPSY <-  c("Convulsions","Epilepsy, recurrent seizures, convulsions","Partial epilepsy", "Epilepsy", "Generalized convulsive epilepsy" )
 
-if(!exists("TABLE04.2")) load("data/patches/TABLE04.2.RData")
+if(!exists("all_events.icd9")) load("data/re-do_epd183/all_events.icd9.RData")
 
-PATIENTS_AGE_REGION <-  TABLE04.2 
-PATIENTS_AGE_REGION$IXDAYS <- as.numeric(PATIENTS_AGE_REGION$IXDAYS)
+PATIENTS_AGE_REGION <-  as.data.frame(all_events.icd9$data)
 ```  
 
-before any filtering has been done retrieve individual observation timeframe
-```{r}
-load("data/patches/enrol.MH.RData")
-enrol.MH  <- enrol.MH %>% filter(medicalHistory >= 2*365)
-```
-
-
 # filter PATIENTS 
-
 ```{r, include = FALSE}
 
 nPatObsCounter <- function(y) {
@@ -61,31 +41,8 @@ nPatObsCounter <- function(y) {
 }
 
 source("functions/n_patient_per_period.R")
-# source("functions/patient_monthly_enrolment.R")
-source("functions/patient_nonNegative_DAYSUPP.R")
-source("functions/setAEDFlag.R")
-source("functions/aggregate_AED_substancenames.R")
 source("functions/add_Phew_PhewHighlevel.R")
 
-# add information
-##################
-# set AED flag
-PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
-# Add Age and Regional Information
-PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
-# match PHEWAS terms to ICD9 terms
-PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
-# health insurance class
-# load("data/monthly_enrolment.RData")
-# monthly_enrolment <-  
-#   monthly_enrolment %>% 
-#   dplyr::select(ENROLID, db) %>% 
-#   distinct() %>% 
-#   mutate(insur = ifelse(db == "CCAE/MDCR", "premium", "basic")) %>% 
-#   dplyr::select(-db) %>% 
-#   as_tibble()
-# monthly_enrolment$ENROLID <- as.numeric(monthly_enrolment$ENROLID)
-# PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION,monthly_enrolment)
 
 # filter
 ########
@@ -93,63 +50,28 @@ patObsCount <- nPatObsCounter(NULL)
 patObsCount$addCount(PATIENTS_AGE_REGION,"unconstraint")
 
 # Keep only patients within valid time period 
-load("data/patches/enrol.MH.RData")
-enrol.MH <- enrol.MH %>% filter(medicalHistory >= 2*365) %>% dplyr::select(ENROLID)
-PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% enrol.MH$ENROLID)
-rm(enrol.MH)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(has2yMH == TRUE)
 patObsCount$addCount(PATIENTS_AGE_REGION,"2y MH + 1 quarter FU")
 
-# only patients with non-negative DAYSUP
-PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
-patObsCount$addCount(PATIENTS_AGE_REGION,"non-negative DAYSUPP")
-
-# adult only (AGE >= 18)
-PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
-patObsCount$addCount(PATIENTS_AGE_REGION,"AGE >= 18")
+# adult only (AGE >= 18, < 65)
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18 & AGE <65) %>% distinct()
+patObsCount$addCount(PATIENTS_AGE_REGION,"AGE [18,65) ")
 
 # only patients which were treated with AEDs
-pat.with.aeds <- 
-  PATIENTS_AGE_REGION %>%
-  filter(isAED == TRUE) %>% 
-  dplyr::select(ENROLID) %>% 
-  distinct()
-
-PATIENTS_AGE_REGION <- 
-  PATIENTS_AGE_REGION %>% 
-  filter(ENROLID %in% pat.with.aeds$ENROLID)
-
+pat.with.aeds <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% select(ENROLID) %>% distinct()
+PATIENTS_AGE_REGION <-   PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
 patObsCount$addCount(PATIENTS_AGE_REGION,"AED treatment")
 
 ## add main comorbidities
-PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION)
-
-#
+PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "adult")
 PATIENTS_AGE_REGION <- unique(PATIENTS_AGE_REGION)
 ```
 
-# get PHEWAS_STRINGS for MAIN.COMORB Strings
+# print MAIN.COMORB to PHEWAS_STRING assignment
 ```{r}
-# list of PHEWAS_STRINGS with their assignments to co-morbidiets
-  MAIN.COMORB <- c("Hypertension","Diabetes","Hyperlipidemia","Anxiety","Migraine","Depression","Stroke.IschemAttack")
-  MAIN.COMORB.PHEWAS <- vector("list",length(MAIN.COMORB))
-  names(MAIN.COMORB.PHEWAS) <- MAIN.COMORB
-  MAIN.COMORB.PHEWAS$Hypertension <- c("Essential hypertension")
-  MAIN.COMORB.PHEWAS$Diabetes <- c("Type 2 diabetes")
-  MAIN.COMORB.PHEWAS$Hyperlipidemia <- c("Hyperlipidemia","Mixed hyperlipidemia")
-  MAIN.COMORB.PHEWAS$Anxiety <- c("Anxiety disorder","Generalized anxiety disorder","Anxiety, phobic and dissociative disorders","Agorophobia, social phobia, and panic disorder")
-  MAIN.COMORB.PHEWAS$Stroke.IschemAttack <- c("Ischemic stroke", "Transient cerebral ischemia")
-  MAIN.COMORB.PHEWAS$Migraine <- c("Migraine","Migrain with aura")
-  MAIN.COMORB.PHEWAS$Depression <- c("Depression","Major depressive disorder")
-  
-  # comorb-list to df, join PHEWAS frequency
-  MAIN.COMORB.PHEWAS <-
-    data.frame (cbind(
-      MAIN.COMORB = as.character(unlist(mapply(rep, MAIN.COMORB, unlist(lapply( MAIN.COMORB.PHEWAS, length))))),
-      PHEWAS_STRING = as.character(unlist(MAIN.COMORB.PHEWAS))
-    ), row.names = NULL, stringsAsFactors = FALSE)
-  
-  knitr::kable(MAIN.COMORB.PHEWAS)
-
+MAIN.COMORB.PHEWAS <- MainComorbAdult()
+MAIN.COMORB.PHEWAS <- MAIN.COMORB.PHEWAS$MAIN.COMORB.PHEWAS
+knitr::kable(MAIN.COMORB.PHEWAS)
 ```
 
 
@@ -318,6 +240,7 @@ for( m in unique(main.comorb.first.ixday$MAIN.COMORB)) {
         x = buffer.int))
 }
 
+
 ggplot(first.ixdays.vs.buffer, aes(buffer.int)) +
   geom_line(aes(y = Hypertension, colour = "Hypertension") ) +
   geom_line(aes(y= Diabetes, colour = "Diabetes")) +
@@ -326,6 +249,8 @@ ggplot(first.ixdays.vs.buffer, aes(buffer.int)) +
   geom_line(aes(y= Stroke.IschemAttack, colour = "Stroke, ischemic attack")) +
   geom_line(aes(y= Migraine, colour = "Migraine")) +
   geom_line(aes(y= Depression, colour = "Depression")) +
+  geom_line(aes(y= Overweight, colour = "Overweight")) +
+  geom_line(aes(y= Psychiatric, colour = "Psychiatric")) +
   ggtitle("Number of patients with new main-comorbidities at time >= IXDAYS \n by main-comorbidity") +
   xlab("IXDAYS") +
   theme(panel.background = element_rect(fill = "grey"))
@@ -392,6 +317,8 @@ ggplot(first.ixdays.vs.buffer.normalized, aes(buffer.int)) +
   geom_line(aes(y= Stroke.IschemAttack, colour = "Stroke, ischemic attack")) +
   geom_line(aes(y= Migraine, colour = "Migraine")) +
   geom_line(aes(y= Depression, colour = "Depression")) +
+  geom_line(aes(y= Overweight, colour = "Overweight")) +
+  geom_line(aes(y= Psychiatric, colour = "Psychiatric")) +
   ggtitle("incidence in % of population by time \n by main-comorbidity") +
   xlab("IXDAYS") +
   theme(panel.background = element_rect(fill = "grey"))
@@ -644,23 +571,23 @@ ggplot(PATIENTS_AGE_REGION %>% dplyr::select(ENROLID, AGE) %>% distinct(), aes(A
   geom_histogram(aes(y = ..density..))
 
 
-# PHARMCLS1 histogram
+# THERCLS histogram
 #####################
 
-# PHARMCLS1 histogram 
+# THERCLS histogram 
 ggplot(
     PATIENTS_AGE_REGION %>% 
-    filter(SUBSTANCENAME != "", PHARMCLS1 != "") %>% 
-    dplyr::select(PHARMCLS1, isAED, ENROLID) %>% 
+    filter(SUBSTANCENAME != "", THERCLS != "") %>% 
+    dplyr::select(THERCLS, isAED, ENROLID) %>% 
     distinct() %>% 
-    group_by(isAED, PHARMCLS1) %>% 
+    group_by(isAED, THERCLS) %>% 
     tally(sort=TRUE) %>% 
     top_n(20,n),
-  aes(x = reorder(PHARMCLS1, n), y = n, fill= isAED)
+  aes(x = reorder(THERCLS, n), y = n, fill= isAED)
   ) +
   coord_flip() +
   geom_bar(stat="identity") +
-  ggtitle(paste("PHARMCLS1 frequency, top 2x20","\n total pop.-size = ",PATIENTS_AGE_REGION %>% dplyr::select(ENROLID) %>% distinct() %>% tally() )) +
+  ggtitle(paste("THERCLS frequency, top 2x20","\n total pop.-size = ",PATIENTS_AGE_REGION %>% dplyr::select(ENROLID) %>% distinct() %>% tally() )) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 # SUBSTANCE frequencies

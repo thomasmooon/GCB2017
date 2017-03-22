@@ -48,20 +48,43 @@ KeepIncidentAndCensored <- function(PATIENTS_AGE_REGION) {
 
 ####################
 
-AddMainComorb <- function(PATIENTS_AGE_REGION,cohort="adult") {
-  
-  if (cohort=="adult") {
-  # flag the particular main-comorbidity
-  # list of PHEWAS_STRINGS with their assignments to co-morbidiets
-  MAIN.COMORB <- c("Hypertension","Diabetes","Hyperlipidemia","Anxiety","Migraine","Depression","Stroke.IschemAttack")
+MainComorbAdult <- function() {
+  MAIN.COMORB <- c("Hypertension","Diabetes","Hyperlipidemia","Anxiety","Migraine","Depression","Stroke.IschemAttack","Overweight","Bipolar.Schizophrenia")
   MAIN.COMORB.PHEWAS <- vector("list",length(MAIN.COMORB))
   names(MAIN.COMORB.PHEWAS) <- MAIN.COMORB
   MAIN.COMORB.PHEWAS$Hypertension <- c("Essential hypertension")
-  MAIN.COMORB.PHEWAS$Diabetes <- c("Type 2 diabetes")
+  MAIN.COMORB.PHEWAS$Diabetes <- c("Type 2 diabetes","Diabetes mellitus")
   MAIN.COMORB.PHEWAS$Hyperlipidemia <- c("Hyperlipidemia","Mixed hyperlipidemia")
   MAIN.COMORB.PHEWAS$Anxiety <- c("Anxiety disorder","Generalized anxiety disorder","Anxiety, phobic and dissociative disorders","Agorophobia, social phobia, and panic disorder")
   MAIN.COMORB.PHEWAS$Stroke.IschemAttack <- c("Ischemic stroke", "Transient cerebral ischemia")
   MAIN.COMORB.PHEWAS$Migraine <- c("Migraine","Migrain with aura")
+  MAIN.COMORB.PHEWAS$Depression <- c("Depression","Major depressive disorder")
+  MAIN.COMORB.PHEWAS$Overweight <- c("Overweight","Obesity")
+  MAIN.COMORB.PHEWAS$Bipolar.Schizophrenia <- c("Bipolar", "Schizophrenia and other psychotic disorders")
+  
+  # comorb-list to df, join PHEWAS frequency
+  MAIN.COMORB.PHEWAS <-
+    data.frame (cbind(
+      MAIN.COMORB = as.character(unlist(mapply(rep, MAIN.COMORB, unlist(lapply( MAIN.COMORB.PHEWAS, length))))),
+      PHEWAS_STRING = as.character(unlist(MAIN.COMORB.PHEWAS))
+    ), row.names = NULL, stringsAsFactors = FALSE)
+  
+  MAIN.COMORB.PHEWAS
+  
+  return(list(MAIN.COMORB=MAIN.COMORB, MAIN.COMORB.PHEWAS=MAIN.COMORB.PHEWAS))
+}
+
+####################
+
+MainComorbChildren <- function() {
+  MAIN.COMORB <- c("ADHD","Autism","Migraine","Developmental.delays.and.disorders","Anxiety","Depression")
+  MAIN.COMORB.PHEWAS <- vector("list",length(MAIN.COMORB))
+  names(MAIN.COMORB.PHEWAS) <- MAIN.COMORB
+  MAIN.COMORB.PHEWAS$ADHD <- c("Attention deficit hyperactivity disorder")
+  MAIN.COMORB.PHEWAS$Autism <- c("Autism")
+  MAIN.COMORB.PHEWAS$Migraine <- c("Migraine","Migrain with aura")
+  MAIN.COMORB.PHEWAS$Developmental.delays.and.disorders <- c("Develomental delays and disorders", "Lack of normal physiological development")
+  MAIN.COMORB.PHEWAS$Anxiety <- c("Anxiety","Anxiety, phobic and dissociative disorders","Generalized anxiety disorder","Agorophobia, social phobia, and panic disorder")
   MAIN.COMORB.PHEWAS$Depression <- c("Depression","Major depressive disorder")
   
   # comorb-list to df, join PHEWAS frequency
@@ -71,42 +94,31 @@ AddMainComorb <- function(PATIENTS_AGE_REGION,cohort="adult") {
       PHEWAS_STRING = as.character(unlist(MAIN.COMORB.PHEWAS))
     ), row.names = NULL, stringsAsFactors = FALSE)
   
-  knitr::kable(MAIN.COMORB.PHEWAS)
+  MAIN.COMORB.PHEWAS
   
+  return(list(MAIN.COMORB=MAIN.COMORB, MAIN.COMORB.PHEWAS=MAIN.COMORB.PHEWAS))
+}
+
+####################
+
+AddMainComorb <- function(PATIENTS_AGE_REGION,cohort="adult") {
+  
+  if (cohort=="adult") {
+  MAIN.COMORB.PHEWAS <- MainComorbAdult()
+  MAIN.COMORB.PHEWAS <- MAIN.COMORB.PHEWAS$MAIN.COMORB.PHEWAS
   # add main-comorbidity to patients table
   PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
   return(PATIENTS_AGE_REGION)
   }
   
   if (cohort=="children") {
-    MAIN.COMORB <- c("ADHD","Autism","Migraine","Developmental.delays.and.disorders","Anxiety","Depression")
-    MAIN.COMORB.PHEWAS <- vector("list",length(MAIN.COMORB))
-    names(MAIN.COMORB.PHEWAS) <- MAIN.COMORB
-    MAIN.COMORB.PHEWAS$ADHD <- c("Attention deficit hyperactivity disorder")
-    MAIN.COMORB.PHEWAS$Autism <- c("Autism")
-    MAIN.COMORB.PHEWAS$Migraine <- c("Migraine","Migrain with aura")
-    MAIN.COMORB.PHEWAS$Developmental.delays.and.disorders <- c("Develomental delays and disorders", "Lack of normal physiological development")
-    MAIN.COMORB.PHEWAS$Anxiety <- c("Anxiety","Anxiety, phobic and dissociative disorders","Generalized anxiety disorder","Agorophobia, social phobia, and panic disorder")
-    MAIN.COMORB.PHEWAS$Depression <- c("Depression","Major depressive disorder")
-    
-    # comorb-list to df, join PHEWAS frequency
-    MAIN.COMORB.PHEWAS <-
-      data.frame (cbind(
-        MAIN.COMORB = as.character(unlist(mapply(rep, MAIN.COMORB, unlist(lapply( MAIN.COMORB.PHEWAS, length))))),
-        PHEWAS_STRING = as.character(unlist(MAIN.COMORB.PHEWAS))
-      ), row.names = NULL, stringsAsFactors = FALSE)
-    
-    knitr::kable(MAIN.COMORB.PHEWAS)
-    
-    # 2. add main-comorbidity to patients table
+    MAIN.COMORB.PHEWAS <- MainComorbChildren()
+    MAIN.COMORB.PHEWAS <- MAIN.COMORB.PHEWAS$MAIN.COMORB.PHEWAS
+    # add main-comorbidity to patients table
     PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
     return(PATIENTS_AGE_REGION)
   }
-  
-  
 }
-
-
 
 ##################
 NormalizeStrings <- function(y) sapply(y, function(x) trimws(toupper(as.character(x)))) %>% as_tibble()
