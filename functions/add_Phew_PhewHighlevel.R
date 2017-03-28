@@ -12,7 +12,12 @@ add_Phew_PhewHighlevel <- function(PATIENTS_AGE_REGION){
   ICD9PHEW       <- ICD9PHEWASHL %>% filter(ICD9 != "") %>% collect()
   ICD9PHEW$ICD9  <- as.character(ICD9PHEW$ICD9)
   ICD9PHEW$ICD9  <- gsub("\\.","",ICD9PHEW$ICD9) # remove delimiter
-  ICD9PHEW       <- ICD9PHEW %>% dplyr::rename(DIAG = ICD9)
+  ICD9PHEW       <- ICD9PHEW %>% dplyr::rename(DIAG = ICD9) %>% na.omit()
+  
+  # parse ICD9
+  ICD9PHEW <- ParseICD9(ICD9PHEW) # source: z_start.R
+  suppressWarnings(ICD9PHEW$DIAG <- as.numeric(ICD9PHEW$DIAG))
+  ICD9PHEW <- na.omit(ICD9PHEW)
   
   # join Phewas and Phewas-highlevel-terms to PATIENTS_AGE_REGION
   PATIENTS_AGE_REGION  <-

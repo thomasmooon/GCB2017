@@ -211,16 +211,16 @@ GetTrainingFeatureMatrix <- function(rawDrugFeatures, patQuartTreat, trainingDat
   cat("\n Add treatment features...\n")
   mainComorb.train.treat <- 
     AddTreatmentFeatures(
-      rawDrugFeatures = drug.features,
-      patQuartTreat = P.QUART.SUBST,
+      rawDrugFeatures = rawDrugFeatures,
+      patQuartTreat = patQuartTreat,
       enrolment = trainingData)
   
   # disease features
   cat("\n Add disease features...\n")
   mainComorb.train.diag <- 
     AddDiagnosisFeatures(
-      rawDiseaseFeatures = DISEASES.FEATMAT, 
-      patQuartDiag = P.QUART.DIAG,
+      rawDiseaseFeatures = rawDiseaseFeatures, 
+      patQuartDiag = patQuartDiag,
       enrolment = trainingData)
   
   # patient features (age, sex, region, MHSAFL, HOSPFL, ...)
@@ -264,8 +264,8 @@ GetTestFeatureMatrix <- function(trainingFeatures, rawDrugFeatures, patQuartTrea
   cat("\n","Add treatment Features...","\n")
   mainComorb.test.treat <- 
     AddTreatmentFeatures(
-      rawDrugFeatures = drug.features,
-      patQuartTreat = P.QUART.SUBST,
+      rawDrugFeatures = rawDrugFeatures,
+      patQuartTreat = patQuartTreat,
       enrolment = testData, 
       trainingFeatures = trainingFeatures)
   
@@ -273,8 +273,8 @@ GetTestFeatureMatrix <- function(trainingFeatures, rawDrugFeatures, patQuartTrea
   cat("\n Add disease features...\n")
   mainComorb.test.diag <- 
     AddDiagnosisFeatures(
-      rawDiseaseFeatures = DISEASES.FEATMAT, 
-      patQuartDiag = P.QUART.DIAG,
+      rawDiseaseFeatures = rawDiseaseFeatures, 
+      patQuartDiag = patQuartDiag,
       enrolment = testData, 
       trainingFeatures = trainingFeatures)
   

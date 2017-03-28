@@ -2,7 +2,7 @@
 title: "disease_Descriptors.Rmd"
 subtitle: ""
 author: "Thomas Gerlach"
-date: "2017 JAN 30"
+date: "2017 MAR 27"
 output: html_notebook
 ---
 
@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7)
 source("z_start.R") # initalize netezza DB, load core data
 ```
 
-## script specific functions
+## (convenience) functions
 ```{r}
 
 

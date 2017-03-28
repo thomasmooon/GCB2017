@@ -1,26 +1,26 @@
 ---
 title: "treatment transitions"
-subtitle: "incident"
+subtitle: "incident, age 18-66"
 author: "Thomas Gerlach"
 output: html_notebook
-date: "2017 FEB 14"
+date: "2017 MAR 22"
 ---
 
 # setup
 ```{r setup, include=FALSE, echo = FALSE }
 # set knitr defaults
 
-rm(list=setdiff(ls(),"TABLE04.2"))
+rm(list=ls())
 knitr::opts_chunk$set(echo = TRUE, fig.width=10, fig.height=10)
 source("z_start.R") # initalize netezza DB, load core data
-if(!exists("TABLE04.2")) load("./data/patches/TABLE04.2.RData")
-
+load("./data/re-do_epd183/all_events.icd9.c.RData")
+data <- as.data.frame(all_events.icd9.c$data)
 ```
 
 # support functions
 ## TreatmentTransition() function
 ```{r}
-TreatmentTransition <- function(obs,plotTitle="", nCutoff=0, withDuplicates = FALSE) {
+TreatmentTransition <- function(obs,plotTitle="", nCutoff=0, withDuplicates = FALSE, AEDs.all) {
   
   # nCutoff: Plot only rows or cols with rowsum or colsum >= nCutoff
   
@@ -72,15 +72,6 @@ TreatmentTransition <- function(obs,plotTitle="", nCutoff=0, withDuplicates = FA
   
   # absolute
   tm <- as.data.frame.matrix(table(obs$current_SUBST, obs$next_SUBST))
-  
-  ## attach dummy variables for missing AEDs for standardization purposes 
-  ## (to enable matrix distance computations)
-  AEDs.all <- c("DIVALPROEX SODIUM", "GABAPENTIN", "LEVETIRACETAM", "OXCARBAZEPINE", "PRIMIDONE",
-                "LAMOTRIGINE", "TOPIRAMATE", "PHENYTOIN SODIUM", "LACOSAMIDE", "ZONISAMIDE",
-                "PHENYTOIN", "VALPROIC ACID", "METHSUXIMIDE", "ETHOSUXIMIDE", "TIAGABINE HYDROCHLORIDE",
-                "FELBAMATE", "VIGABATRIN", "ESLICARBAZEPINE ACETATE", "GABAPENTIN ENACARBIL", "FOSPHENYTOIN SODIUM",
-                "VALPROATE SODIUM", "ETHOTOIN")
-  
   
   # add new rows
   AED.missing.rows <- setdiff(AEDs.all,row.names(tm))
@@ -160,17 +151,19 @@ GetIncidentMCPatients <- function(x) {
   return(x)
   }
 ```
-
-
-
 # compute transitions
+
+all AEDS
+```{r}
+AEDs.all <- unique(data$SUBSTANCENAME[data$isAED == TRUE])
+```
 
 ## children.incident
 
 ### all children.incident
 ```{r}
 
-children.incident <- FILTER_PATIENTS_AGE_REGION.T2(TABLE04.2, cohort = "children")
+children.incident <- AddMainComorb(data, cohort = "children")
 children.incident <- GetIncidentMCPatients(children.incident)
 
 children.incident.all <- 
@@ -180,9 +173,9 @@ children.incident.all <-
   select(ENROLID, IXDAYS, SUBSTANCENAME) %>%
   distinct()
 
-nCutoff <- 10
+nCutoff <- 0
 title <- paste("children.AEDtreatment,","n=",n_distinct(children.incident.all$ENROLID),", rowSum and colSum >=",nCutoff)
-children.incident.all.tm <-  TreatmentTransition(children.incident.all,title,nCutoff = nCutoff)
+children.incident.all.tm <-  TreatmentTransition(children.incident.all,title,nCutoff = nCutoff, AEDs.all = AEDs.all)
 ```
 
 ### children.incident with main-comorbidities
@@ -213,7 +206,7 @@ for(m in 1:length(children.incident.mc)) {
   tmp.n <- n_distinct(children.incident.tmp$ENROLID)
   
   title <-paste("children.incident, ",mc,", n=",tmp.n,", rowSum and colSum >=",nCutoff)
-children.incident.mc.l[[m]] <- TreatmentTransition(children.incident.tmp, title, nCutoff = nCutoff)
+children.incident.mc.l[[m]] <- TreatmentTransition(children.incident.tmp, title, nCutoff = nCutoff,  AEDs.all = AEDs.all)
 }
 ```
 
@@ -293,7 +286,7 @@ heatmap.2(
 ### all adult.incident
 ```{r}
 
-adult.incident <- FILTER_PATIENTS_AGE_REGION.T2(TABLE04.2, cohort = "adult")
+adult.incident <- AddMainComorb(data, cohort = "adult")
 adult.incident <- GetIncidentMCPatients(adult.incident)
 
 adult.incident.all <- 
@@ -304,7 +297,7 @@ adult.incident.all <-
   distinct()
 
 title <- paste("adult.AEDtreatment, n=",n_distinct(adult.incident.all$ENROLID),", rowSum and colSum >=",nCutoff)
-adult.incident.all.tm <- TreatmentTransition(adult.incident.all,title,nCutoff = nCutoff)
+adult.incident.all.tm <- TreatmentTransition(adult.incident.all,title,nCutoff = nCutoff,  AEDs.all = AEDs.all)
 ```
 
 ### adult.incident with main-comorbidities
@@ -335,7 +328,7 @@ for(m in 1:length(adult.incident.mc)) {
   tmp.n <- n_distinct(adult.incident.tmp$ENROLID)
   
   title <- paste("adult.incident, ",mc,", n=",tmp.n,", rowSum and colSum >=",nCutoff)
-  adult.incident.mc.l[[m]] <- TreatmentTransition(adult.incident.tmp,title, nCutoff = nCutoff)
+  adult.incident.mc.l[[m]] <- TreatmentTransition(adult.incident.tmp,title, nCutoff = nCutoff,  AEDs.all = AEDs.all)
 }
 ```
 

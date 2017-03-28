@@ -2,7 +2,7 @@
 title: "drugRelatedDescriptors"
 subtitle: ""
 author: "Thomas Gerlach"
-date: "2017 JAN 30"
+date: "2017 MAR 27"
 output: html_notebook
 ---
 
@@ -11,30 +11,26 @@ output: html_notebook
 rm(list=ls())
 knitr::opts_chunk$set(echo = TRUE, fig.width=10, fig.height=7) # markdown
 source("z_start.R") # initalize netezza DB, load core data
-load("output/SUBST.PROP.PHARM.RData")
 ```
 
-# retrieve SUBSTANCENAME, PROPRIETARYNAME, PHARMCLS1
+# retrieve synonyms and classes for substancenames
 ```{r}
-load("output/SUBST.PROP.PHARM.RData")
-SUBST.PROP.PHARM <- SUBST.PROP.PHARM %>% filter(SUBSTANCENAME != "") %>%  distinct()
-PATIENTS.DRUGS1 <- SUBST.PROP.PHARM
+load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/pharm_class_mapping.RData")
+
+pharmClassMapping <- 
+  pharmClassMapping %>% filter(GENNME != "", THRCLDS != "") %>%  
+  select(GENNME, THRCLDS, THRGRDS) %>% distinct() %>% rename(SUBSTANCENAME = GENNME)
+
+pharmClassMapping <- apply(pharmClassMapping, 2, function(x) toupper(trimws(x))) %>% as.data.frame() %>% unique()
 ```
 
 # add Synonyms
 ```{r}
-DRUG2SYNONYMS <- tbl(src,"REFERENCE.DRUGSYNONYMS") %>% collect() 
-DRUG2SYNONYMS <- DRUG2SYNONYMS[DRUG2SYNONYMS$TTDDRUGID != "",]
+DRUG2SYNONYMS <- tbl(src,"REFERENCE.DRUGSYNONYMS") %>% filter(TTDDRUGID != "") %>% collect() 
 DRUG2SYNONYMS <- as_tibble(apply(DRUG2SYNONYMS,2, as.character),stringsAsFactors = FALSE)
 DRUG2SYNONYMS <- parseColByIdx(DRUG2SYNONYMS,"SYNONYMS")
 DRUG2SYNONYMS <- apply(DRUG2SYNONYMS,2, function(x) trimws(toupper(x))) %>% as_tibble() %>% distinct()
-
-PATIENTS.DRUGS2 <-
-  left_join(
-  PATIENTS.DRUGS1,
-  DRUG2SYNONYMS %>% dplyr::select(-TTDDRUGID) %>% distinct(),
-  by = c("SUBSTANCENAME" = "DRUGNAME")
-  )
+PATIENTS.DRUGS2 <-left_join(pharmClassMapping,DRUG2SYNONYMS %>% dplyr::select(-TTDDRUGID) %>% distinct(), by = c("SUBSTANCENAME" = "DRUGNAME"))
 ```
 
 # SUBSTANCENAME -> TTDDRUGID, SUBSTANCENAME -> names
@@ -43,9 +39,8 @@ PATIENTS.DRUGS2 <-
 ```{r}
 PATIENTS.DRUGS3 <- 
   rbind(
-    PATIENTS.DRUGS2 %>% dplyr::select(SUBSTANCENAME,PHARMCLS1) %>% mutate(names=SUBSTANCENAME),
-    PATIENTS.DRUGS2 %>% dplyr::select(SUBSTANCENAME,PHARMCLS1, PROPRIETARYNAME) %>% dplyr::rename(names=PROPRIETARYNAME),
-    PATIENTS.DRUGS2 %>% dplyr::select(SUBSTANCENAME,PHARMCLS1, SYNONYMS) %>% dplyr::rename(names=SYNONYMS)
+    PATIENTS.DRUGS2 %>% dplyr::select(SUBSTANCENAME,THRCLDS,THRGRDS) %>% mutate(names=SUBSTANCENAME),
+    PATIENTS.DRUGS2 %>% dplyr::select(SUBSTANCENAME,THRCLDS,THRGRDS,SYNONYMS) %>% dplyr::rename(names=SYNONYMS)
   ) %>% 
   distinct()
 
@@ -550,9 +545,7 @@ FeatStats <- function(feature) {
 
 ## create fi (feature input)
 ```{r}
-fi.DRD1 <- DRD1 %>% dplyr::select(-names) %>% distinct()
-fi.DRD1 <- parseColByIdx(fi.DRD1,"PHARMCLS1")
-FeatStats(fi.DRD1)
+fi.drugclass <- DRD1 %>% dplyr::select(-names) %>% distinct()
 
 fi.drug2indications <- drug2indications %>% dplyr::select(-PHEWAS_CODE, -PHEWAS_CODE_HL) %>% distinct()
 
@@ -570,7 +563,8 @@ fi.drug2tissue <- drug2tissue
 # replace TTDDRUGID with SUBSTANCENAMES
 T2S <- DRD1 %>% dplyr::select(SUBSTANCENAME, TTDDRUGID) %>% distinct()
 AddSubstancenames <- function(x) inner_join(x, T2S) %>% dplyr::select(-TTDDRUGID) %>% distinct()
-fo.DRD1               <- fi.DRD1 %>% dplyr::select(-TTDDRUGID) %>% distinct()
+fo.THRCLDS            <- fi.drugclass %>% dplyr::select(SUBSTANCENAME, THRCLDS) %>% distinct()
+fo.THRGRDS            <- fi.drugclass %>% dplyr::select(SUBSTANCENAME, THRGRDS) %>% distinct()
 fo.drug2indications   <- AddSubstancenames(fi.drug2indications)
 fo.drug2indications.1 <- fo.drug2indications %>% dplyr::select(-PHEWAS_STRING) %>% distinct()
 fo.drug2indications.2 <- fo.drug2indications %>% dplyr::select(-PHEWAS_STRING_HL) %>% distinct()
@@ -581,7 +575,8 @@ fo.drug2tissue        <- AddSubstancenames(fi.drug2tissue)
 
 # make.names()
 My.make.names <- function(x) apply(x, 2, make.names) %>% as_tibble() %>% distinct()
-fo.DRD1             <- My.make.names(fo.DRD1)
+fo.THRCLDS          <- My.make.names(fo.THRCLDS)
+fo.THRGRDS          <- My.make.names(fo.THRGRDS)
 fo.drug2indications <- My.make.names(fo.drug2indications)
 fo.drug2sideeffects <- My.make.names(fo.drug2sideeffects)
 fo.drug2go          <- My.make.names(fo.drug2go)
@@ -590,7 +585,8 @@ fo.drug2tissue      <- My.make.names(fo.drug2tissue)
 save(fo.drug2pathway,file="output/fo.drug2pathway.RData")
 
 # stats for fo's
-FeatStats(fo.DRD1)
+FeatStats(fo.THRCLDS)
+FeatStats(fo.THRGRDS)
 FeatStats(fo.drug2indications.1)
 FeatStats(fo.drug2indications.2)
 FeatStats(fo.drug2sideeffects)
@@ -600,7 +596,8 @@ FeatStats(fo.drug2tissue)
 
 # spread features for joins
   ## rename for spread to retrieve meaningful variable names
-  fo.DRD1 <- fo.DRD1 %>% dplyr::rename(DRUG.PHARMCLS1 = PHARMCLS1)
+  fo.THRCLDS <- fo.THRCLDS %>% dplyr::rename(DRUG.THRCLDS = THRCLDS)
+  fo.THRGRDS <- fo.THRGRDS %>% dplyr::rename(DRUG.THRGRDS = THRGRDS)
   fo.drug2indications.1 <- fo.drug2indications.1 %>% dplyr::rename(DRUG.PHEWAS_HL = PHEWAS_STRING_HL)
   fo.drug2indications.2 <- fo.drug2indications.2 %>% dplyr::rename(DRUG.PHEWAS = PHEWAS_STRING)
   fo.drug2go <- fo.drug2go %>% dplyr::rename(DRUG.GO = GO)
@@ -608,7 +605,8 @@ FeatStats(fo.drug2tissue)
   fo.drug2tissue <- fo.drug2tissue %>% dplyr::rename(DRUG.TISSUE = tissue)
   fo.drug2sideeffects <- fo.drug2sideeffects %>% dplyr::rename(DRUG.SIDEEFFECTS = SIDEEFFECTS)
   ## spread
-  fo.DRD1               <- spread(data.frame(fo.DRD1,key=1), DRUG.PHARMCLS1, key, fill = 0, sep = ".x.")
+  fo.THRCLDS            <- spread(data.frame(fo.THRCLDS,key=1), DRUG.THRCLDS, key, fill = 0, sep = ".x.")
+  fo.THRGRDS            <- spread(data.frame(fo.THRGRDS,key=1), DRUG.THRGRDS, key, fill = 0, sep = ".x.")
   fo.drug2indications.1 <- spread(data.frame(fo.drug2indications.1,key=1), DRUG.PHEWAS_HL, key, fill = 0, sep = ".x.")
   fo.drug2indications.2 <- spread(data.frame(fo.drug2indications.2,key=1), DRUG.PHEWAS, key, fill = 0, sep = ".x.")
   fo.drug2go            <- spread(data.frame(fo.drug2go,key=1), DRUG.GO, key, fill = 0, sep = ".x.")
@@ -622,8 +620,9 @@ FeatStats(fo.drug2tissue)
 ```{r}
 
 # print summary
-tables <- c("drug2pharmcls1","drug2phewas_hl","drug2phewas", "drug2go", "drug2pathway (kegg & wiki)", "drug2sideeffects","drug2tissue")
-dims   <- c(paste(dim(fo.DRD1),collapse=" x "),
+tables <- c("drug2THRCLDS","fo.THRGRDS","drug2phewas_hl","drug2phewas", "drug2go", "drug2pathway (kegg & wiki)", "drug2sideeffects","drug2tissue")
+dims   <- c(paste(dim(fo.THRCLDS),collapse=" x "),
+            paste(dim(fo.THRGRDS),collapse=" x "),
             paste(dim(fo.drug2indications.1),collapse=" x "),
             paste(dim(fo.drug2indications.2),collapse=" x "),
             paste(dim(fo.drug2go),collapse=" x "),
@@ -638,7 +637,8 @@ knitr::kable(s)
 
 # combine
 drug.features <-
-  fo.DRD1 %>% 
+  fo.THRCLDS %>% 
+  left_join(fo.THRGRDS) %>% 
   left_join(fo.drug2indications.1) %>% 
   left_join(fo.drug2indications.2) %>% 
   left_join(fo.drug2go) %>% 

@@ -3,83 +3,269 @@ title: "patient descriptors"
 author: "Thomas Gerlach"
 subtitle: "patientDescriptors.Rmd"
 output: html_notebook
-date: "2017 FEB 08"
+date: "2017 MAR 22"
 ---
 
 # setup
-```{r start, echo=FALSE, include = FALSE}
-rm(list=setdiff(ls(), "TABLE04.2"))
-knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7) # markdown
-source("z_start.R") # initalize netezza DB, load core data
-if(!exists("TABLE04.2")) load("data/patches/TABLE04.2.RData")
+```{r setup, echo=FALSE, include = FALSE}
+rm(list=ls())
+knitr::opts_chunk$set( fig.width=10, fig.height=7)
+load("data/re-do_epd183/all_events.icd9.c.RData")
+source("z_start.R") # initalize netezza DB, load functions
+library(data.table)
 ```
-
-
-# filter patients
+# define population
 ```{r standardize population, echo=FALSE}
-PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION.T2(TABLE04.2)
-
-# filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
-PATIENTS_AGE_REGION <- KeepIncidentAndCensored(PATIENTS_AGE_REGION)
-PATIENTS_AGE_REGION <- ParseICD9(PATIENTS_AGE_REGION)
+P <- as.data.frame(all_events.icd9.c$data %>% filter(AGE >= 18))
+# P <- P %>%  select(ENROLID, HOSPFL, DAYS, IXDAYS, AGE, SEXC, MAIN.COMORB) %>% distinct() # omit useless columns
+P <- AddMainComorb(P, "adult")
+P <- KeepIncidentAndCensored(P) # filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
 ```
+# (convenience) functions
+```{r}
+AddRegion <- function(x) {
+  
+  x$ENROLID <- as.numeric(x$ENROLID)
+  load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/enrollment_demographic.RData")
+  enrollment_demographic$ENROLID <- as.numeric(enrollment_demographic$ENROLID)
+  load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/region.RData")
+  region$REGION <- as.character(region$REGION)
+  
+  y <-
+    x %>% select(ENROLID) %>% distinct() %>% 
+    left_join(enrollment_demographic %>% select(ENROLID, REGION) %>% distinct(), by = "ENROLID") %>% 
+    left_join(region, by = "REGION") %>% select(-REGION)
+  
+  return(y)
+}
+
+#######################
+
+HospDaysPerQuarter <- function(P) {
+  
+ # hospitalization days per quarter
+   P.hosp <- P %>% filter(HOSPFL == TRUE) %>%  select(ENROLID, DAYS, IXDAYS)  %>% distinct()
+   P.hosp$IXDAYS.end <- P.hosp$IXDAYS + P.hosp$DAYS -1 # get last hospital day
+   start <- which(colnames(P.hosp) == "IXDAYS")
+   stop <- which(colnames(P.hosp) == "IXDAYS.end")
+   P.hosp$hospix <- apply(P.hosp, 1,FUN = function(x) x[start]:x[stop]) # get hospitalisation interval
+   
+# compute quarters
+ setDT(P.hosp)
+ P.hosp <- P.hosp[, lapply(.SD, function(x) c(unlist(x))), by = ENROLID, .SDcols = "hospix"]
+ P.hosp <- unique(P.hosp) # avoid doubles (-> overcount days per quarter)
+   # drop observations beyond 1st quarter
+   drop <- which(P.hosp$hospix >= 91.25)
+   P.hosp <- P.hosp[-drop,]
+ P.hosp[, QUARTER := floor(hospix/91.25)] # compute quarters from interval
+ P.hosp[QUARTER >= 0, QUARTER := QUARTER +1] # shift by 1: positive quarters start from 1, instead of 0
+ 
+ # nice names
+ P.hosp[, QUARTER := paste("HospDays",gsub("-","m",QUARTER), sep = ".x.")]
+ 
+# aggregate
+ P.hosp[,count := 1] # value.var for dcast aggregation via sum
+ P.hosp <- dcast(P.hosp, ENROLID ~ QUARTER, fill = 0, fun=sum, value.var = "count")
+
+#
+ return(P.hosp)
+}
+
+#######################
+
+Ixdays2Quarter <- function(P) {
+  
+  setDT(P)
+  # compute quarters
+  P[, QUARTER := floor(IXDAYS/91.25)] # compute quarters from interval
+  P[QUARTER >= 0, QUARTER := QUARTER +1] # shift by 1: positive quarters start from 1, instead of 0
+  
+  #
+  return(setDF(P))
+}
+
+#######################
+
+# PhewasPerQuarter <- function(P) {
+#   
+#  P.QUART.DIAG <- P %>% select(ENROLID, DIAG, QUARTER) %>% filter(DIAG != "") %>% distinct() %>% na.omit()
+#  
+#  # convert ICD9 to PHEWAS highlevel terms
+#   source("functions/add_Phew_PhewHighlevel.R")
+#   P.QUART.DIAG <- add_Phew_PhewHighlevel(P.QUART.DIAG) 
+#   
+#  # drop useless rows and columns
+#   P.QUART.DIAG <- P.QUART.DIAG %>% select(-DIAG, -PHEWAS_STRING) %>% filter(PHEWAS_STRING_HL != "-") %>% distinct() %>% na.omit() 
+#   
+#  # reshape and aggregate
+#   P.QUART.DIAG$value <- TRUE
+#   setDT(P.QUART.DIAG)
+#   P.QUART.DIAG[, PHEWAS_STRING_HL := paste("PHEWAS_STRING_HL",PHEWAS_STRING_HL, sep = ".x.")] # add domain name
+#   P.QUART.DIAG <- dcast(P.QUART.DIAG, ENROLID ~ PHEWAS_STRING_HL + QUARTER, max, value.var = "value", fill = 0, sep = ".x.")
+#  
+#  #
+#  return(setDF(P.QUART.DIAG))
+# }
+
+#######################
+
+# TherclsPerQuarter <- function(P) {
+#   P.QUART.THERCLS <- 
+#     P %>%  filter(THERCLS != "") %>% select(ENROLID, QUARTER, THERCLS) %>% distinct() %>% 
+#     mutate(THERCLS = paste("THERCLS",THERCLS,sep = ".x.")) %>% 
+#     mutate(value = TRUE) %>% 
+#     as.data.table() %>% 
+#     dcast(ENROLID ~ THERCLS + QUARTER, value.var = "value", fun.aggregate = max, fill = 0, sep = ".x.")
+#   
+#   return(P.QUART.THERCLS)
+# }
+
+#######################
+
+AedQuartQty <- function(P) {
+  # metqty by aed by quarter
+    P.QUART.METQTY.AED <- 
+      P %>% filter(isAED == TRUE ) %>%  select(ENROLID, NDCNUM, IXDAYS, METQTY, DAYSUPP) %>% distinct() %>% 
+      mutate(DAYQTY = METQTY / DAYSUPP)
+
+  # retrieve NDCNUM features
+  load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/pharm_class_mapping.RData")
+  pharmClassMapping <- 
+    pharmClassMapping %>% filter(NDCNUM %in% P.QUART.METQTY.AED$NDCNUM) %>% select(NDCNUM, GENNME, ROACD, STRNGTH) %>%
+    distinct() %>% mutate(AED = make.names(paste(GENNME,ROACD, STRNGTH, sep="_")))
+
+  # join NDCNUM features to patients treatment data
+  P.QUART.METQTY.AED <- left_join(P.QUART.METQTY.AED, pharmClassMapping %>% select(NDCNUM, AED), by = "NDCNUM") %>% select(-NDCNUM)
+
+  # hospitalization days per quarter
+    P.QUART.METQTY.AED$IXDAYS.end <- P.QUART.METQTY.AED$IXDAYS + P.QUART.METQTY.AED$DAYSUPP -1 # get last treatment prescription day
+    start <- which(colnames(P.QUART.METQTY.AED) == "IXDAYS")
+    stop <- which(colnames(P.QUART.METQTY.AED) == "IXDAYS.end")
+    P.QUART.METQTY.AED$treatix <- apply(P.QUART.METQTY.AED, 1,FUN = function(x) x[start]:x[stop]) # get treatment period
+    
+  # compute quarters
+    setDT(P.QUART.METQTY.AED)
+    P.QUART.METQTY.AED[, c("IXDAYS","METQTY","DAYSUPP","IXDAYS.end") := NULL ] # drop useless cols
+    P.QUART.METQTY.AED <- P.QUART.METQTY.AED[, lapply(.SD, function(x) c(unlist(x))), by = .(ENROLID)]
+    P.QUART.METQTY.AED <- P.QUART.METQTY.AED[, lapply(.SD, function(x) c(unlist(x))), by = .(ENROLID, DAYQTY, AED)]
+   
+  # drop observations beyond 1st quarter
+    drop <- which(P.QUART.METQTY.AED$treatix >= 91.25)
+    P.QUART.METQTY.AED <- P.QUART.METQTY.AED[-drop,]
+    P.QUART.METQTY.AED[, QUARTER := floor(treatix/91.25)] # compute quarters from interval
+    P.QUART.METQTY.AED[QUARTER >= 0, QUARTER := QUARTER +1] # shift by 1: positive quarters start from 1, instead of 0
+  
+  # aggregate
+    P.QUART.METQTY.AED <- dcast(P.QUART.METQTY.AED, ENROLID ~ AED + QUARTER, fill = 0, fun=sum, value.var = "DAYQTY", sep = ".x.")
+  
+  # nice colnames
+   colnames(P.QUART.METQTY.AED) <- gsub("-","m",colnames(P.QUART.METQTY.AED))
+   
+  #
+   return(P.QUART.METQTY.AED)
+}
+
+#######################
+
+GetHltplnPlantypCov <- function() {
+  load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/enrollment_demographic.RData")
+  load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/plantyp.RData")
+  load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/hlthpln.RData")
+  enrollment_demographic$HLTHPLAN <- as.numeric(enrollment_demographic$HLTHPLAN)
+  
+  enrollment_demographic <- 
+    enrollment_demographic %>% filter(ENROLID %in% P$ENROLID) %>% 
+    left_join(plantyp) %>% left_join(hlthpln, by = c("HLTHPLAN" = "HLTHPLN")) %>% 
+    select(ENROLID, COVERAGE_OF_PRESCRIPTIONS, HLTHPLNC, PLANTYPC) %>% 
+    distinct()
+  
+  setDT(enrollment_demographic)
+  enrollment_demographic[COVERAGE_OF_PRESCRIPTIONS != "Yes", COVERAGE_OF_PRESCRIPTIONS := "No"]
+  setDF(enrollment_demographic)
+  enrollment_demographic$ENROLID <- as.numeric(enrollment_demographic$ENROLID)
+  return(enrollment_demographic)
+}
+```
+
 
 # define censored and main-comorbidity populations
 ```{r}
 # assignment to censored / incident (for a particular main-comorbidity) and "survival" endpoints (censoring date, incidence date)
-source("functions/GetCensoredIncidentSurvivalTime.R")
-censored.incident <- GetCensoredIncidentSurvivalTime(PATIENTS_AGE_REGION)
-save(censored.incident, file = "output/featureMatrix/censored.incident.RData", compress = TRUE)
+ source("functions/GetCensoredIncidentSurvivalTime.R")
+ censored.incident <- GetCensoredIncidentSurvivalTime(P)
+ save(censored.incident, file = "output/featureMatrix/censored.incident.RData", compress = TRUE)
 ```
 
 
-# get patient features
+# standardise temporal information
 ```{r}
-# ComputeQuartersFromIXDAYS
-source("functions/ComputeQuartersFromIXDAYS.R")
-P <- ComputeQuartersFromIXDAYS(PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365 & IXDAYS <= 90))
-unique(P$QUARTER)
-
-P.QUART.DIAG  <- P %>% filter(DIAG != "") %>% select(ENROLID, QUARTER, DIAG)
-P.QUART.SUBST <- P %>% filter(SUBSTANCENAME != "") %>% select(ENROLID, QUARTER, SUBSTANCENAME)
-save(P.QUART.DIAG, file = "output/featureMatrix/P.QUART.DIAG.RData", compress = TRUE)
-save(P.QUART.SUBST, file = "output/featureMatrix/P.QUART.SUBST.RData", compress = TRUE)
-
-# GetAgeSexRegion
-source("functions/GetAgeSexRegion.R")
-P.AgeSexRegion <- GetAgeSexRegion(P)
-
-# GetHOSPFL.DAYS
-source("functions/GetHOSPFL.DAYS.R")
-P.HOSPFL <- GetHOSPFL.DAYS(P)
-
-# GetMHSAFL.count
-source("functions/GetMHSAFL.R")
-P.MHSAFL <- GetMHSAFL.count(P)
-
-# GetQUARTQTY
-source("functions/GetQUARTQTY.R")
-P.AED_QUARTQTY <- GetQUARTQTY(P)
-
-  # drop features which are not in medical history
-  source("functions/NoMedicalHistoryColumns.R")
-  (noMHCols <- NoMedicalHistoryColumns(P.AED_QUARTQTY))
-  (noMHCols <- setdiff(noMHCols,"ENROLID"))
-  colSelect <- setdiff(colnames(P.AED_QUARTQTY), noMHCols)
-  P.AED_QUARTQTY <- P.AED_QUARTQTY[,colSelect]
-
+ P <- P %>% filter(IXDAYS >= -2*365 & IXDAYS <= 91.25)
 ```
+
+
+## get patient features
+```{r}
+
+# convert IXDAY to QUARTER
+  P <- Ixdays2Quarter(P)
+  P$QUARTER <- gsub("-","m",P$QUARTER)
+
+# Age, Sex, Region
+  P.Region <- AddRegion(P)
+  P$ENROLID <- as.numeric(P$ENROLID)
+  P.Region$ENROLID <- P.Region$ENROLID
+  P.AgeSexRegion <- P %>% select(ENROLID, AGE, SEXC) %>% distinct() %>% left_join(P.Region, by = "ENROLID")
+
+# hospitalization days per quarter
+  P.hospDaysQuarter <- HospDaysPerQuarter(P)
+
+# diagnosis (PHEWAS Highlevel) per quarter
+  # P.QUART.PHEWASHL <- PhewasPerQuarter(P)
+
+# treatment yes/no (THERCLS) per quarter
+  # P.QUART.THERCLS <- TherclsPerQuarter(P)
+  
+# metqty by aed by quarter
+  P.QUART.METQTY.AED <- AedQuartQty(P)
+
+# healthplan, plantype, Coverage of prescriptions
+  P.QUART.CLAIMS <- GetHltplnPlantypCov()
+
+# size feature space
+  names <- c("P.hospDaysQuarter","P.QUART.METQTY.AED","P.QUART.CLAIMS")
+  featureSpace <- sapply(names, function(x) dim(eval(parse(text=x))))
+  featureSpace[2,] <- featureSpace[2,]-1
+  row.names(featureSpace) <- c("nPat","nFeat")
+  knitr::kable(t(featureSpace))
+  
+  
+```
+
 ## join patient features
 ```{r}
-P.feat.template <- 
+# join
+P.FEAT.ENROL <- 
   P.AgeSexRegion %>% 
-  left_join(P.HOSPFL) %>% 
-  left_join(P.MHSAFL) %>% 
-  left_join(P.AED_QUARTQTY)
+  left_join(P.hospDaysQuarter, by = "ENROLID") %>% 
+  # left_join(P.QUART.THERCLS, by = "ENROLID") %>% 
+  left_join(P.QUART.METQTY.AED, by = "ENROLID") %>% 
+  left_join(P.QUART.CLAIMS, by = "ENROLID") 
 
-# NA's to FALSE (zero)
-P.feat.template[is.na(P.feat.template)] <- 0
-
-save(P.feat.template, file = "output/featureMatrix/P.feat.template.RData", compress = TRUE)
+# substitute NAs
+  P.FEAT.ENROL[is.na(P.FEAT.ENROL)] <- 0
+  
+# save
+  save(P.FEAT.ENROL, file = "output/featureMatrix/P.FEAT.ENROL.RData", compress = TRUE)
 ```
 
+## get DIAG and SUBSTANCE "raw" features for derived features
+```{r}
+# diagnosis
+  P.QUART.DIAG  <- P %>% filter(DIAG != "") %>% select(ENROLID, QUARTER, DIAG)
+  save(P.QUART.DIAG, file = "output/featureMatrix/P.QUART.DIAG.RData", compress = TRUE)
+
+# treatment
+  P.QUART.SUBST <- P %>% filter(SUBSTANCENAME != "") %>% select(ENROLID, QUARTER, SUBSTANCENAME)
+  P.QUART.SUBST$SUBSTANCENAME <- toupper(make.names(P.QUART.SUBST$SUBSTANCENAME))
+  save(P.QUART.SUBST, file = "output/featureMatrix/P.QUART.SUBST.RData", compress = TRUE)
+```
