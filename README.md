@@ -6,7 +6,7 @@ This repo contains supplemental information (R-Code) of the paper mentioned belo
 Predicting Comorbidities of Epilepsy Patients Using Big Data from Electronic Health Records Combined With Biomedical Knowledge
 
 ## Authors:
-Thomas Gerlach(1), Chao Lu (3), Holger Frohlich (1,2) 
+Thomas Gerlach(1), Chao Lu (3), Holger Fröhlich (1,2) 
 * (1) UCB Biosciences GmbH, Monheim, Germany
 * (2) University of Bonn, Bonn-Aachen International Center for IT, Life Sciene Data Analytics and Algorithmic Bioinformatics, Germany
 * (3) UCB Ltd., Raleigh, USA
