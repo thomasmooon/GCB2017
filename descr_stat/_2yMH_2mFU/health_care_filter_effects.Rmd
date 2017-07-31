@@ -1,0 +1,294 @@
+---
+title: "Health Care Filter Effects"
+subtitle: "health_care_filter_effects.Rmd"
+author: "Thomas Gerlach"
+date: "10 OCT 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+
+# load core data and connect to netezza
+```{r start, echo = FALSE}
+source("z_start.R") # initalize netezza DB, load core data
+
+if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
+PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+```
+
+# cover page
+```{r, echo = FALSE}
+title   <- "Health Care Filter Effects"
+note1   <- "Compare populations 'basic insurance' vs. 'additional private insurance' "
+file    <- "health_care_filter_effects.Rmd"
+filters <- "2y MH, non-negative DAYSUPP"
+
+coverpage(title = title,note1 = note1,file = file,filters = filters)
+
+```
+
+# apply filters
+```{r standardize population, echo=FALSE}
+
+source("functions/n_patient_per_period.R")
+source( "functions/patient_monthly_enrolment.R")
+source("functions/patient_nonNegative_DAYSUPP.R")
+source("functions/setAEDFlag.R")
+source("functions/aggregate_AED_substancenames.R")
+source("functions/add_Phew_PhewHighlevel.R")
+source("functions/disOnt_ICD9_2_MESH.R")
+
+# reset PATIENT_AGE_REGION filters: 0y FU
+PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+# # re-compute missing IXDAYS for all observations
+newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
+PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
+# # Keep only patients within valid time period 
+PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
+# # Add Age and Regional Information
+PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
+# # # only keep patients without gaps within the relevant observation period
+# PATIENTS_AGE_REGION <- filter_patient_gapFreePeriod(PATIENTS_AGE_REGION,gapFreePeriod = "quarter")
+# # patient monthly enrolment: health insurance
+PATIENTS_AGE_REGION <- patient_filter_healthCareEnrolment(PATIENTS_AGE_REGION)
+# # only patients with non-negative DAYSUP
+PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
+# # set AED flag
+PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
+# # aggregate AED SUBSTANCENAME's
+PATIENTS_AGE_REGION <- aggregate_AED_substancenames(PATIENTS_AGE_REGION)
+# # Match PHEWAS terms to ICD9 terms
+PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+
+```
+
+# investigate health-care-filter effects
+```{r, echo = FALSE}
+
+# PATIENTS with private insur
+#############################
+insPriv <- PATIENTS_AGE_REGION
+
+# PATIENTS with basic insurance only
+####################################
+# reset PATIENT_AGE_REGION filters: 0y FU
+PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+# # re-compute missing IXDAYS for all observations
+newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
+PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
+# # Keep only patients within valid time period 
+PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
+# # Add Age and Regional Information
+PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
+# # only patients with non-negative DAYSUP
+PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
+# # set AED flag
+PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
+# # aggregate AED SUBSTANCENAME's
+PATIENTS_AGE_REGION <- aggregate_AED_substancenames(PATIENTS_AGE_REGION)
+# # Match PHEWAS terms to ICD9 terms
+PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+
+# # PATIENTS without private insur
+insBasic <- PATIENTS_AGE_REGION %>% filter(!(ENROLID %in% insPriv$ENROLID))
+
+
+```
+
+# population size
+```{r, echo = FALSE}
+text   <- c("private insurance","basic insurance")
+
+nPatient <-
+  c(
+  (insPriv %>% select(ENROLID) %>% distinct() %>% tally()),
+  (insBasic %>% select(ENROLID) %>% distinct() %>% tally())
+  )
+
+knitr::kable(cbind(text,nPatient))
+```
+
+# mean amount unique substance prescriptions
+```{r, echo = FALSE,fig.width=20,fig.height=10}
+
+insBasic_nSubst <- 
+  aggregate(
+    SUBSTANCENAME ~ ENROLID,
+    data= insBasic %>% select(ENROLID, SUBSTANCENAME) %>% distinct(),
+    FUN=length)
+
+insPriv_nSubst <- 
+  aggregate(
+    SUBSTANCENAME ~ ENROLID,
+    data= insPriv %>% select(ENROLID, SUBSTANCENAME) %>% distinct(),
+    FUN=length)
+
+nSubst <- round(c(mean(insPriv_nSubst$SUBSTANCENAME),mean(insBasic_nSubst$SUBSTANCENAME)),1)
+
+knitr::kable(cbind(text,nSubst))
+
+```
+
+# age histograms
+```{r, echo = FALSE,fig.width=20,fig.height=10}
+p1 <- 
+  ggplot(insBasic %>% select(ENROLID, AGE) %>% distinct(),aes(x=AGE, ..density..)) +
+  geom_histogram() +
+  ggtitle("basic insurance \n red lines = age 18 and 65") +
+  xlim(c(0,100)) +
+  geom_vline(xintercept = c(18,65),color="red",linetype="dashed")
+
+p2 <- 
+  ggplot(insPriv %>% select(ENROLID, AGE) %>% distinct(),aes(x=AGE, ..density..)) +
+  geom_histogram() +
+  ggtitle("private insurance \n red lines = age 18 and 65") +
+  xlim(c(0,100)) +
+  geom_vline(xintercept = c(18,65),color="red",linetype="dashed")
+
+subplot(1,2)
+print(p1,vp=vplayout(1,1))
+print(p2,vp=vplayout(1,2))
+
+print("Age distribution 'basic insurance' is more uniform than 'private insurance'")
+print("Age distribution 'private insurance': fraction of age <18 and age >65 lower than in 'basic insurance'")
+```
+
+
+# top X AEDs
+```{r, echo = FALSE,fig.width=20,fig.height=10}
+
+# private insurance
+insPrivAEDs <-
+  aggregate(
+  ENROLID ~ SUBSTANCENAME,
+  data =
+    insPriv %>%
+    filter(isAED == TRUE) %>%
+    select(ENROLID, SUBSTANCENAME) %>%
+    distinct(),
+  FUN = length
+  )
+
+# basic insurance
+insBasicAEDs <-
+  aggregate(
+  ENROLID ~ SUBSTANCENAME,
+  data =
+    insBasic %>%
+    filter(isAED == TRUE) %>%
+    select(ENROLID, SUBSTANCENAME) %>%
+    distinct(),
+  FUN = length
+  )
+
+# sort
+insBasicAEDs <- insBasicAEDs[order(insBasicAEDs$ENROLID,decreasing = T),]
+insPrivAEDs  <- insPrivAEDs[order(insPrivAEDs$ENROLID,decreasing = T),]
+
+# ranking plot
+plotRanks(
+  insBasicAEDs$SUBSTANCENAME,
+  paste(insBasicAEDs$SUBSTANCENAME,"\n n=",insBasicAEDs$ENROLID,sep=""),
+  insPrivAEDs$SUBSTANCENAME,
+  paste(insPrivAEDs$SUBSTANCENAME,"\n n=",insPrivAEDs$ENROLID,sep=""),
+  labels.offset =0.5)
+title("basic VS private \n ranking comparsion AEDS")
+
+
+```
+
+# top X non-AEDs
+```{r, echo = FALSE,fig.width=20,fig.height=10}
+
+
+# private insurance
+insPriv_nonAEDs <-
+  aggregate(
+  ENROLID ~ SUBSTANCENAME,
+  data =
+    insPriv %>%
+    filter(isAED == FALSE, SUBSTANCENAME != "") %>%
+    select(ENROLID, SUBSTANCENAME) %>%
+    distinct(),
+  FUN = length
+  )
+
+# basic insurance
+insBasic_nonAEDs <-
+  aggregate(
+  ENROLID ~ SUBSTANCENAME,
+  data =
+    insBasic %>%
+    filter(isAED == FALSE, SUBSTANCENAME != "") %>%
+    select(ENROLID, SUBSTANCENAME) %>%
+    distinct(),
+  FUN = length
+  )
+
+# sort
+insBasic_nonAEDs <- insBasic_nonAEDs[order(insBasic_nonAEDs$ENROLID,decreasing = T),]
+insPriv_nonAEDs  <- insPriv_nonAEDs[order(insPriv_nonAEDs$ENROLID,decreasing = T),]
+
+# top 20
+insBasic_nonAEDs <- top_n(insBasic_nonAEDs,25)
+insPriv_nonAEDs  <- top_n(insPriv_nonAEDs,25)
+
+# ranking plot
+plotRanks(
+  insBasic_nonAEDs$SUBSTANCENAME,
+  paste(insBasic_nonAEDs$SUBSTANCENAME,"\n n=",insBasic_nonAEDs$ENROLID,sep=""),
+  insPriv_nonAEDs$SUBSTANCENAME,
+  paste(insPriv_nonAEDs$SUBSTANCENAME,"\n n=",insPriv_nonAEDs$ENROLID,sep=""),
+  labels.offset =0.5,cex = 0.75)
+title("basic VS private \n ranking comparsion Top 25 non-AEDs")
+
+```
+
+
+# top X high-level Phewas-terms
+```{r, echo = FALSE,fig.width=20,fig.height=10}
+# private insurance
+insPriv_phewas <-
+  aggregate(
+    ENROLID ~ PHEWAS_STRING,
+    data =
+      insPriv %>%
+      filter(PHEWAS_STRING != "") %>%
+      select(ENROLID, PHEWAS_STRING) %>%
+      distinct(),
+    FUN = length
+  )
+
+# basic insurance
+insBasic_phewas <-
+  aggregate(
+    ENROLID ~ PHEWAS_STRING,
+    data =
+      insBasic %>%
+      filter(PHEWAS_STRING != "") %>%
+      select(ENROLID, PHEWAS_STRING) %>%
+      distinct(),
+    FUN = length
+  )
+
+# sort
+insBasic_phewas <- insBasic_phewas[order(insBasic_phewas$ENROLID,decreasing = T),]
+insPriv_phewas  <- insPriv_phewas[order(insPriv_phewas$ENROLID,decreasing = T),]
+
+# top 20
+insBasic_phewas <- top_n(insBasic_phewas,25)
+insPriv_phewas  <- top_n(insPriv_phewas,25)
+
+# ranking plot
+plotRanks(
+  insBasic_phewas$PHEWAS_STRING,
+  paste(insBasic_phewas$PHEWAS_STRING,"\n n=",insBasic_phewas$ENROLID,sep=""),
+  insPriv_phewas$PHEWAS_STRING,
+  paste(insPriv_phewas$PHEWAS_STRING,"\n n=",insPriv_phewas$ENROLID,sep=""),
+  labels.offset =0.5,cex = 0.75)
+title("basic VS private \n ranking comparsion Top 25 Phewas")
+```
+

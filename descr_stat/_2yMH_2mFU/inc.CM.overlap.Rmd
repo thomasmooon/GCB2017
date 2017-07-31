@@ -1,0 +1,46 @@
+---
+title: "patient overlap between main-comorbidity strata"
+output: html_notebook
+date: "2017 JAN 19"
+---
+
+# setup
+```{r setup, include=FALSE, echo = FALSE }
+# set knitr defaults
+knitr::opts_chunk$set(echo = TRUE, fig.width=20, fig.height=10)
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT, cohort = "adult")
+```
+  
+# patients with incident MC's by MC
+```{r}
+main.comorb.first.ixday <-
+  PATIENTS_AGE_REGION %>% 
+  filter(MAIN.COMORB != "") %>% 
+  select(ENROLID, IXDAYS, MAIN.COMORB) %>% 
+  distinct()
+
+main.comorb.first.ixday <- aggregate(IXDAYS ~., data = main.comorb.first.ixday , FUN = min)
+```
+
+## draw 10% of the samples by random for each MC: how many unique patients has the union?
+```{r}
+inci <- main.comorb.first.ixday %>% filter(IXDAYS >= 180) %>% select(-IXDAYS) %>% distinct()
+mc <- unique(main.comorb.first.ixday$MAIN.COMORB)
+
+pop <- sapply(mc,FUN = function(x) inci %>% filter(MAIN.COMORB == x) %>% select(ENROLID))
+nSamp <- c()
+for(k in 1:10000){
+samp <- lapply(pop, FUN = function(x) sample(x, 0.1*length(x), replace = FALSE))      
+samp <- n_distinct(unlist(samp))
+nSamp <- c(nSamp,samp)
+}
+summary(nSamp)
+cat("\n\n")
+cat("standard deviation:",sd(nSamp),"\n\n")
+
+cat("fraction of max(nSamp)/popSize: ",round(max(nSamp) / n_distinct(inci$ENROLID),2)*100,"%","\n\n")
+cat("popSize/max(nSamp):",round(n_distinct(inci$ENROLID) / max(nSamp),1),"times","\n\n")
+```
+

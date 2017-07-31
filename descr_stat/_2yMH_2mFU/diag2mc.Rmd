@@ -1,0 +1,28 @@
+---
+title: "treatment transitions"
+subtitle: "prevalent"
+author: "Thomas Gerlach"
+output: html_notebook
+date: "2017 JAN 24"
+---
+
+# setup
+```{r setup, include=FALSE, echo = FALSE }
+# set knitr defaults
+rm(list=setdiff(ls(),"TABLE04SAS7BDAT.sparse"))
+knitr::opts_chunk$set(echo = TRUE, fig.width=10, fig.height=10)
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04SAS7BDAT.sparse")) load("./data/TABLE04SAS7BDAT.sparse.RData")
+par(cex.main=0.75)
+```
+
+# Diagnosis VS main-comorbidity
+```{r}
+
+adult <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT.sparse, sparse = T, cohort = "adult")
+
+diag2mc <-
+  adult %>% 
+  filer(DIAG != "",!is.na(MAIN.COMORB)) %>% 
+  select(DIAG, MAIN.COMORB)
+

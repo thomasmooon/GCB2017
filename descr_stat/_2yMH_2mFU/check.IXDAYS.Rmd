@@ -1,0 +1,106 @@
+---
+title: "check INDEXDATE computations of Paul Flynn"
+output: html_notebook
+---
+
+
+```{r}
+# check assignment to indexdate
+
+load("data/TABLE04SAS7BDAT.RData")
+source("z_start.R")
+
+diag.time <- 
+  TABLE04SAS7BDAT %>% 
+  filter(DIAG != "") %>% 
+  select(ENROLID, DIAG, EVTDATE, INDEXDT) %>% 
+  distinct()
+
+diag.time      <- ParseICD9(diag.time)
+diag.time$DIAG <- as.numeric(diag.time$DIAG)
+head(diag.time)
+```
+
+	1. an occurrence of ≥2 ICD-9-CM codes of 345.xx among separate medical encounters (separate dates in any care venue)
+	
+	2. an occurrence of ≥1 ICD-9-CM code of 345.xx AND ≥1 ICD-9-CM code of 780.3x among separate medical encounters
+	
+	3. an occurrence of 1 ICD-9-CM code of 345.xx AND code(s) for AED prescription after the 345.xx code
+	
+	4. an occurrence of ≥ 2 ICD codes of 780.39 among separate medical encounters AND code(s) for AED treatment. 
+	The code(s) for the AED treatment should occur after the second 780.3x irrespective of the presence or 
+	absence of an AED code after the first 780.39 code
+	
+	5. Patients with ICD-9-CM code 345.3 will be required to have an occurrence of ≥2 ICD-9-CM codes of 345.3 separated by at least 30 days,
+	or an occurrence of the 345.3 code and ≥1 ICD-9-CM code 780.39 separated by at least 30 days, 
+	or ≥1 ICD-9-CM code 345.3 and ≥1 ICD-9-CM code 345.xx  encounters on separate days
+	
+	6. For definitions requiring at least 2 ICD-9-CM codes the first diagnosis code will be the index date.
+
+# check (1.)
+```{r}
+
+# flag all observations which fulfill criterium
+diag.time$c1 <- round(diag.time$DIAG,0) == 345
+
+# get patients which fulfill criterium
+c1 <- 
+  diag.time %>% 
+  filter(c1 == TRUE) %>% 
+  select(ENROLID, EVTDATE) %>%  distinct() %>% 
+  group_by(ENROLID) %>% tally() %>% filter(n >= 2) %>% 
+  select(ENROLID) 
+
+# get first diagnosis code event
+c1.ixday <- 
+  diag.time %>% 
+  filter(c1 == TRUE) %>% 
+  filter(ENROLID %in% c1$ENROLID) %>% # patients with >= 2 345.xx diagnosis at different EVTDATE
+  select(ENROLID, EVTDATE) %>%  distinct() %>% 
+  group_by(ENROLID) %>% mutate(c1.ixday = min(EVTDATE)) %>%  # get first event
+  select(ENROLID, c1.ixday) %>% distinct() 
+
+# has any patient an c1.ixday-date which is smaller than an indexdate in TABLE04SAS7BDAT?
+c1.test <- 
+  diag.time %>% 
+  select(ENROLID, INDEXDT) %>% distinct() %>% # get all indexdate for all patients
+  right_join(c1.ixday) %>% # join my indexdate for criterium c1
+  mutate(test = c1.ixday < INDEXDT) %>% filter(test == TRUE) %>% # filter patients with positive test criterium
+  mutate(test.dif = c1.ixday - INDEXDT) # get difference
+
+head(c1.test)
+
+cat("Number of Patients where c1.ixday < patients-table IXDAY:", nrow(c1.test),"\n")
+
+ggplot(c1.test, aes(test.dif)) + geom_histogram() + ggtitle("Distribution of 'test.diff'")
+cat("summary statistics of c1.test$test.diff:","\n")
+summary(as.numeric(c1.test$test.dif))
+
+# double-check
+# pick some patients with difference and check TABLE04 content in detail for that particular 345.xx diagnosis
+###############
+
+# pick patient with the larget difference: check observations
+  d1 <- min(c1.test$test.dif)
+  d1.enrolid <- c1.test %>% filter(test.dif == d1) %>% select(ENROLID)
+  d1.P <- TABLE04SAS7BDAT %>% filter(ENROLID == d1.enrolid$ENROLID)
+  cat("Patient ",d1.enrolid$ENROLID,"TABLE04 indexdate:", as.character(unique(d1.P$INDEXDT)),"\n")
+  # get EVTDT of 345.xx events for that patient
+  cat("Eventdates of ICD9 345.xx events:", "\n")
+  knitr::kable(d1.P %>% filter(DIAG >= 345 & DIAG < 346) %>% select(EVTDATE) %>% distinct())
+  
+# pick another patient
+  d1 <- -602
+  d1.enrolid <- c1.test %>% filter(test.dif == d1) %>% select(ENROLID)
+  d1.P <- TABLE04SAS7BDAT %>% filter(ENROLID == d1.enrolid$ENROLID)
+  cat("Patient ",d1.enrolid$ENROLID,"TABLE04 indexdate:", as.character(unique(d1.P$INDEXDT)),"\n")
+  # get EVTDT of 345.xx events for that patient
+  cat("Eventdates of ICD9 345.xx events:", "\n")
+  knitr::kable(d1.P %>% filter(DIAG >= 345 & DIAG < 346) %>% select(EVTDATE) %>% distinct())
+  
+cat("#######################################\n")
+cat("conclusion: *Last* EVTDATE was taken, instead of *first*")
+cat("#######################################\n")
+  
+```
+

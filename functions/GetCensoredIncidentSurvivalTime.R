@@ -12,7 +12,8 @@ GetCensoredIncidentSurvivalTime <- function(PATIENTS_AGE_REGION) {
     select(ENROLID, IXDAYS) %>% 
     group_by(ENROLID) %>% mutate(time = max(IXDAYS)) %>% 
     ungroup() %>% select(ENROLID, time) %>% distinct() %>% 
-    mutate(status = "censored")
+    mutate(status = "censored") %>% 
+    filter(time >= 365/4 * 2)
   
   # patients with main-comorbidities
   ##################################
@@ -20,7 +21,7 @@ GetCensoredIncidentSurvivalTime <- function(PATIENTS_AGE_REGION) {
   main.comorb.first.ixday <- aggregate(IXDAYS ~., data = main.comorb.first.ixday, FUN = min)
   
   # with incident main-comorbidities
-  incident <- main.comorb.first.ixday %>% filter(IXDAYS >= 180)
+  incident <- main.comorb.first.ixday %>% filter(IXDAYS >= 365/4 * 2)
   incident <- incident %>% dplyr::rename(time = IXDAYS, status = MAIN.COMORB)
   
   return(rbind(censored,incident))

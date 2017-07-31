@@ -1,0 +1,57 @@
+---
+title: "TABLE04SASB7DAT.issues.R"
+output: html_notebook
+date: "2017 FEB 01  "
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+xx <- TABLE04SAS7BDAT
+xx$IXDAYS <- xx$STARTDT - xx$INDEXDT
+```
+
+# HOSPFL
+```{r}
+
+xx.hospfl <- 
+  xx %>% 
+  filter(HOSPFL == 1) %>% 
+  dplyr::select(ENROLID, IXDAYS) %>%
+  distinct() %>% 
+  select(IXDAYS)
+
+hist(as.numeric(xx.hospfl$IXDAYS), breaks = 100, main = "TABLE04SAS7BDAT, HOSPFL distribution")
+
+cat("\n Summary statistics \n")
+summary(as.numeric(xx.hospfl$IXDAYS))
+```
+# hospital DAYS
+
+```{r}
+
+xx.hospfl.days <- 
+  xx %>% 
+  filter(HOSPFL == 1) %>% 
+  dplyr::select(ENROLID, IXDAYS, DAYS) %>%
+  distinct() %>% 
+  select(DAYS)
+
+hist(as.numeric(xx.hospfl.days$DAYS), breaks = 100, main = "TABLE04SAS7BDAT, hospital DAYS distribution")
+hist(as.numeric(xx.hospfl.days$DAYS), breaks = 500, main = "TABLE04SAS7BDAT, hospital DAYS distribution, IXDAYS <= 50", xlim = c(0,50))
+
+cat("\n Summary statistics \n")
+summary(as.numeric(xx.hospfl.days$DAYS))
+
+```
+
+
+# MHSAFL
+```{r}
+xx.mhsafl <- xx %>% filter(MHSAFL == 1) %>%  dplyr::select(ENROLID, IXDAYS) %>% distinct() %>% select(IXDAYS)
+hist(as.numeric(xx.mhsafl$IXDAYS), breaks = 100, main = "TABLE04SAS7BDAT, MHSAFL distribution")
+
+cat("\n Summary statistics \n")
+summary(as.numeric(xx.mhsafl$IXDAYS))
+```
+

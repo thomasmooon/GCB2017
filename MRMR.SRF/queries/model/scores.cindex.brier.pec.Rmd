@@ -1,0 +1,128 @@
+---
+title: "MRMR + SRF, cindex, brierscore"
+subtitle: "4000 trees, importance sampling, feature matrix equals to SDAE (dummy, normalized)"
+output: html_notebook
+date: "2017 MAY 15"
+---
+
+
+
+
+# content:
+   1
+   compute c-index and (integrated) brier-score for RF
+   then compute prediction error 
+
+   2
+   compute kaplan meier estimates by main-comorbidity by cv-sample
+   compute prediction error
+
+   3
+   compare both prediction error curves
+
+
+# load
+```{r}
+library(dplyr)
+library(pec)
+library(survival)
+load("~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/importance_4000/survRF_summary.RData")
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.cvsamp.RData")
+```
+
+# run
+```{r}
+# container for scores
+  nCV    <- n_distinct(cv.samp$cv.samp)
+  nMC    <- n_distinct(cv.samp$main.comorb) - 1 # -1 substract "censored"
+  x1     <- unlist(lapply(names(survRF), function(x) rep(x,nCV)))
+  x2     <- rep(1:nCV,nMC)
+  scores <- data.frame(mc = x1, cv = x2, cindex = NA, IBS.SRF = NA, IBS.REFERENCE = NA )
+
+# loop:
+  # get cindex
+  # get IBS (integrated brier score)
+  n <- 1
+  mcIndex <- 1:6
+  
+  for(m in 1:nMC) {
+    for(j in 1:nCV) {
+      fm   <- survRF[[m]]$test[[j]]$fm
+      surv <- survRF[[m]]$test[[j]]$surv
+    
+      # compute c-index
+      k                <- 1:ncol(surv)
+      scores$cindex[n] <- mean(unlist(parallel::mclapply(k, function(x) compareC::estC(fm$time, fm$status, surv[,x]), mc.cores = 6)))
+      
+      # IBS and error curves
+       # consider:
+       # the TEST DATA SURVIVAL MATRIX has as many columns as unique death times in the TRAINING data set.
+       # to be able to compare the kaplan meier estimater, which only takes in to account the unique times from the test data,
+       # (here fm$time) against the predictet survival times of the survival-RF model, one has to select those columns of the
+       # prediction survival matrix which matches to the timings of test data set.
+       # therefore one has to select the referring columns via selecting the training-unique.death.times matching to the test-unique-death.times.
+       # 
+       # in addition to that one has to drop those patients from the test dataset which have death.times which don't have
+       # a match in the training death.times.
+      
+      death.times.training <- survRF[[m]]$training[[j]]$unique.death.times
+      death.times.test     <- unique(fm$time)
+      testSurvMatCols      <- death.times.training %in% death.times.test
+      validTrainingTimes   <- death.times.test[death.times.test %in% death.times.training]
+      
+      patientsWithValidTimes <- fm$time %in% validTrainingTimes
+      fmTestConstr           <- fm[patientsWithValidTimes,]
+      survTestConstr         <- surv[patientsWithValidTimes,testSurvMatCols]
+      fmTrainingConstr       <- survRF[[m]]$training[[j]]$fm %>% filter(time %in% validTrainingTimes)
+      
+      suppressWarnings(
+       p <- 
+         pec(
+           survTestConstr,
+           formula = Surv(time = time, event = status) ~1,
+           traindata = fmTrainingConstr,
+           data = fmTestConstr,
+           start = min(death.times.test) # essential, because default is 0
+           )
+       )
+       
+       scores$IBS.SRF[n]       <- crps(p)[row.names(crps(p)) == "matrix"]
+       scores$IBS.REFERENCE[n] <- crps(p)[row.names(crps(p)) == "Reference"]
+       
+       # plot
+         if(j == 1) {
+           names(p$models) <- NULL
+           plot(p, ylim = c(0,0.3), xlim=c(0,1200))
+           legend("topleft",col=c("black", "red"), lwd=2,   legend=c("Kaplan Meier","Ranger SRF"), cex=0.85, bty="n", xjust=1, seg.len=0.5)
+           grid()
+         } else {
+           lines(x = p$time, y = p$AppErr$Reference, col = "black", lwd = 2)
+           lines(x = p$time, y = p$AppErr$matrix, col = "red", lwd = 2)
+         }
+      n <- n+1
+    }
+    mean.cindex <- round(mean(scores$cindex[mcIndex]),2)*100
+    mean.ibs  <- round(mean(scores$IBS.SRF[mcIndex]),2)
+    title(main=paste((names(survRF))[m], nCV,"-fold CV", "\n","mean cindex:",mean.cindex,"%, mean IBS",mean.ibs))
+    mcIndex <- mcIndex + 6
+    }
+```
+
+# summary c-indices and brier scores
+```{r}
+  knitr::kable(
+    scores %>% 
+      group_by(mc) %>% 
+      summarise(
+        mean.cindex = round(mean(cindex)*100,1),
+        sd.cindex = round(sd(cindex)*100,1),
+        mean.IBS = round(mean(IBS.SRF)*100,1),
+        sd.IBS = round(sd(IBS.SRF)*100,1)
+        )
+    )
+
+```
+
+
+
+  

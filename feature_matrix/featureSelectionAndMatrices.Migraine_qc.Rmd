@@ -1,0 +1,47 @@
+---
+title: "migraine survival RF, quick check"
+output: html_notebook
+---
+
+
+```{r}
+load("~/epilepsie_preprocessing_descrStat/mRMR.Ranger..Migraine.RData")
+```
+
+# mean minimum survival probability
+```{r}
+minsurv <- apply(x.predict$survival,1,min)
+evt2minsurv <- data.frame(status = mc.Features$fm.test$featureMatrix$status, minsurv)
+library(data.table)
+setDT(evt2minsurv)
+cat("\n popsize \n")
+knitr::kable(evt2minsurv[,.N, by = status])
+cat("\n mean \n")
+knitr::kable(evt2minsurv[,lapply(.SD,mean), by = status])
+cat("\n sd \n")
+knitr::kable(evt2minsurv[,lapply(.SD,sd), by = status])
+```
+
+```{r, fig.height=28, fig.width=7}
+id <- floor(runif(64,0,2816))
+
+par(mfrow=c(16,4))
+for(k in 1:length(id)){
+evtdate <- mc.Features$fm.test$featureMatrix$time[id[k]]
+plot(x.predict$unique.death.times, x.predict$survival[id[k],], ylim = c(0,1), main = paste("id ",id[k], ", no event"), xlab ="", ylab="")
+
+  abline(v = evtdate, lty = 5, col = "black")
+}
+```
+```{r, fig.height=28, fig.width=7}
+id <- floor(runif(64,2817,x.predict$num.samples))
+
+par(mfrow=c(16,4))
+for(k in 1:length(id)){
+evtdate <- mc.Features$fm.test$featureMatrix$time[id[k]]
+plot(x.predict$unique.death.times, x.predict$survival[id[k],], ylim = c(0,1), main = paste("id ",id[k], ", event"), xlab ="", ylab="")
+
+  abline(v = evtdate, lty = 5, col = "red")
+}
+``````
+

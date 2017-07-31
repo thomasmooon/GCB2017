@@ -1,0 +1,108 @@
+---
+title: "patient descriptors"
+author: "Thomas Gerlach"
+subtitle: "patientDescriptors.Rmd"
+output: html_notebook
+date: "2017 MAR 22"
+---
+
+# setup
+```{r setup, echo=FALSE, include = FALSE}
+rm(list=ls())
+knitr::opts_chunk$set( fig.width=10, fig.height=7)
+load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/all_events.icd9.c.RData")
+source("z_start.R") # initalize netezza DB, load functions
+source("~/epilepsie_preprocessing_descrStat/functions/PatientDescriptors.lib.R")
+library(data.table)
+```
+
+# define population
+```{r standardize population, echo=FALSE}
+P <- as.data.frame(all_events.icd9.c$data %>% filter(AGE >= 18))
+# P <- P %>%  select(ENROLID, HOSPFL, DAYS, IXDAYS, AGE, SEXC, MAIN.COMORB) %>% distinct() # omit useless columns
+P <- AddMainComorb(P, "adult")
+P <- KeepIncidentAndCensored(P) # filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
+```
+
+
+# define censored and main-comorbidity populations
+```{r}
+# assignment to censored / incident (for a particular main-comorbidity) and "survival" endpoints (censoring date, incidence date)
+ source("functions/GetCensoredIncidentSurvivalTime.R")
+ censored.incident <- GetCensoredIncidentSurvivalTime(P)
+ save(censored.incident, file = "output/featureMatrix/censored.incident.RData", compress = TRUE)
+```
+
+
+# standardise temporal information
+```{r}
+ P <- P %>% filter(IXDAYS >= -2*365 & IXDAYS <= 91.25)
+```
+
+
+## get patient features
+```{r}
+
+# convert IXDAY to QUARTER
+  P <- Ixdays2Quarter(P)
+  P$QUARTER <- gsub("-","m",P$QUARTER)
+
+# Age, Sex, Region
+  P.Region <- AddRegion(P)
+  P$ENROLID <- as.numeric(P$ENROLID)
+  P.Region$ENROLID <- P.Region$ENROLID
+  P.AgeSexRegion <- P %>% select(ENROLID, AGE, SEXC) %>% distinct() %>% left_join(P.Region, by = "ENROLID")
+
+# hospitalization days per quarter
+  P.hospDaysQuarter <- HospDaysPerQuarter(P)
+
+# diagnosis (PHEWAS Highlevel) per quarter
+  # P.QUART.PHEWASHL <- PhewasPerQuarter(P)
+
+# treatment yes/no (THERCLS) per quarter
+  # P.QUART.THERCLS <- TherclsPerQuarter(P)
+  
+# metqty by aed by quarter
+  P.QUART.METQTY.AED <- AedQuartQty(P)
+
+# healthplan, plantype, Coverage of prescriptions
+  P.QUART.CLAIMS <- GetHltplnPlantypCov()
+
+# size feature space
+  names <- c("P.hospDaysQuarter","P.QUART.METQTY.AED","P.QUART.CLAIMS")
+  featureSpace <- sapply(names, function(x) dim(eval(parse(text=x))))
+  featureSpace[2,] <- featureSpace[2,]-1
+  row.names(featureSpace) <- c("nPat","nFeat")
+  knitr::kable(t(featureSpace))
+  
+  
+```
+
+## join patient features
+```{r}
+# join
+P.FEAT.ENROL <- 
+  P.AgeSexRegion %>% 
+  left_join(P.hospDaysQuarter, by = "ENROLID") %>% 
+  # left_join(P.QUART.THERCLS, by = "ENROLID") %>% 
+  left_join(P.QUART.METQTY.AED, by = "ENROLID") %>% 
+  left_join(P.QUART.CLAIMS, by = "ENROLID") 
+
+# substitute NAs
+  P.FEAT.ENROL[is.na(P.FEAT.ENROL)] <- 0
+  
+# save
+  save(P.FEAT.ENROL, file = "output/featureMatrix/P.FEAT.ENROL.RData", compress = TRUE)
+```
+
+## get DIAG and SUBSTANCE "raw" features for derived features
+```{r}
+# diagnosis
+  P.QUART.DIAG  <- P %>% filter(DIAG != "") %>% select(ENROLID, QUARTER, DIAG)
+  save(P.QUART.DIAG, file = "output/featureMatrix/P.QUART.DIAG.RData", compress = TRUE)
+
+# treatment
+  P.QUART.SUBST <- P %>% filter(SUBSTANCENAME != "") %>% select(ENROLID, QUARTER, SUBSTANCENAME)
+  P.QUART.SUBST$SUBSTANCENAME <- toupper(make.names(P.QUART.SUBST$SUBSTANCENAME))
+  save(P.QUART.SUBST, file = "output/featureMatrix/P.QUART.SUBST.RData", compress = TRUE)
+```

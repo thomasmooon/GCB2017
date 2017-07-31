@@ -1,0 +1,139 @@
+---
+title: "feature matrix, feature selection, survival random forest"
+subtitle: ""
+date: "2017 FEB 27"
+output: html_notebook
+---
+
+
+# load patient / drug / disease features + censored/comorbidity enrolment
+```{r setup}
+start <- proc.time()
+# load packages
+require(dplyr)
+require(tidyr)
+library(profvis)
+library(data.table)
+library(mRMRe)
+  set.thread.count(10) # allow up to 10 cores for parallelization
+
+# load functions
+source("functions/Lib.featSelAndRF.R")
+
+# drug raw features
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/DRUG.FEATMAT.RData")
+  
+# disease raw features
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/DISEASE.FEATMAT.RData")
+
+# patient features
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/P.feat.template.RData") # contains age, sex, region, status, time
+  setDT(P.feat.template)
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.RData") # contains assigment to censored / main-comorbidity
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/P.QUART.SUBST.RData") # contains treatment by quarter
+  P.QUART.SUBST$SUBSTANCENAME <- make.names(P.QUART.SUBST$SUBSTANCENAME)
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/P.QUART.DIAG.RData") # contains diagnosis by quarter
+  
+    # filter P.* tables by quarters
+    quarters <- c(paste("m",1:9, sep = ""), "1")
+    P.QUART.SUBST <- P.QUART.SUBST %>% filter(QUARTER %in% quarters)
+    P.QUART.DIAG  <- P.QUART.DIAG %>% filter(QUARTER %in% quarters)
+```
+# assignment to training and test data by main-comorbidity
+```{r set test and training datasets}
+# filter populations by main-comorbidity
+unique(censored.incident$status)
+censored       <- censored.incident %>% filter(status == "censored") %>% mutate(status = 0)
+# Anxiety        <- censored.incident %>% filter(status == "Anxiety") %>% mutate(status = 1)
+# Depression     <- censored.incident %>% filter(status == "Depression") %>% mutate(status = 1)
+# Diabetes       <- censored.incident %>% filter(status == "Diabetes") %>% mutate(status = 1)
+# Hyperlipidemia <- censored.incident %>% filter(status == "Hyperlipidemia") %>% mutate(status = 1)
+# Hypertension   <- censored.incident %>% filter(status == "Hypertension") %>% mutate(status = 1)
+Migraine         <- censored.incident %>% filter(status == "Migraine") %>% mutate(status = 1)
+
+# Anxiety.Enrol        <- GetTestTrainAssignment(censored, Anxiety)
+# Depression.Enrol     <- GetTestTrainAssignment(censored, Depression)
+# Diabetes.Enrol       <- GetTestTrainAssignment(censored, Diabetes)
+# Hyperlipidemia.Enrol <- GetTestTrainAssignment(censored, Hyperlipidemia)
+# Hypertension.Enrol   <- GetTestTrainAssignment(censored, Hypertension)
+Migraine.Enrol       <- GetTestTrainAssignment(censored, Migraine)
+```
+
+# select a main-comorbidity
+```{r}
+mc.descr <- "Migraine"
+mc       <- Migraine
+mc.enrol <- Migraine.Enrol
+mc.enrol$train.data$time <- as.numeric(mc.enrol$train.data$time)
+mc.enrol$test.data$time <- as.numeric(mc.enrol$test.data$time)
+```
+
+
+# feature selection
+```{r compute feature matrix}
+mc.Features <- 
+  GetTrainingFeatureMatrix(
+    trainingData =         mc.enrol$train.data, 
+    rawDrugFeatures =      drug.features, 
+    patQuartTreat =        P.QUART.SUBST, 
+    rawDiseaseFeatures =   DISEASES.FEATMAT, 
+    patQuartDiag =         P.QUART.DIAG, 
+    patFeatures =          P.feat.template
+   )
+
+mc.Features$mRMR <- featureSelectionMRMR(featureMatrix = mc.Features$featureMatrix, feature_count = 500) # mRMR feature selection
+```
+## training and test feature matrices
+```{r}
+# feature collection
+survival_features  <- c("time","status")
+character_features <- c("GENDER","REGIONC")
+mRMR_features <- mc.Features$mRMR$featureNames
+all_features <- unique(c(survival_features, character_features, mRMR_features))
+
+# training feature matrix: add "GENDER" and "REGIONC" to feature matrix
+mc.Features$fm.training <- mc.Features$featureMatrix[,all_features]
+
+# test feature matrix
+mc.Features$fm.test <- 
+  GetTestFeatureMatrix(
+    trainingFeatures =     all_features,
+    testData =             mc.enrol$test.data, 
+    rawDrugFeatures =      drug.features, 
+    patQuartTreat =        P.QUART.SUBST, 
+    rawDiseaseFeatures =   DISEASES.FEATMAT, 
+    patQuartDiag =         P.QUART.DIAG, 
+    patFeatures =          P.feat.template
+   )
+
+mc.Features$fm.test$featureMatrix$ENROLID <- c() # ENROLID useless for ranger
+
+# quick check
+dim(mc.Features$fm.training)
+dim(mc.Features$fm.test$featureMatrix)
+
+head(mc.Features$fm.training)
+head(mc.Features$fm.test$featureMatrix)
+```
+
+# survival random forest
+```{r}
+
+library(ranger)
+library(survival)
+profile.train <- profvis::profvis(x.ranger <- ranger(Surv(time, status) ~ ., data = mc.Features$fm.training, num.trees = 5000)) # train
+profile.test <- profvis::profvis(x.predict <- predict(x.ranger, dat = mc.Features$fm.test$featureMatrix)) # predict
+```
+
+# save
+```{r}
+save.image(file=paste("mRMR.Ranger.",mc.descr,"RData",sep="."), compress = TRUE) # save
+```
+
+# status email
+```{r}
+stop <- round((proc.time() - start)[3] / 60,0)
+source("functions/StatusEmail.R")
+StatusEmail(subject = paste("RStudio status email: ",mc.descr,"finished"),body = paste(stop,"minutes computing time"))
+```
+

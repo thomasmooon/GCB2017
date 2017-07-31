@@ -1,0 +1,121 @@
+---
+title: "importance sampling values from ranger SRF"
+output: html_notebook
+---
+
+setup
+```{r}
+library(dplyr)
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.cvsamp.RData")
+
+# create container
+MC <- setdiff(unique(cv.samp$main.comorb),"censored")
+N <- length(MC) * length(unique(cv.samp$cv.samp))
+importance.MRMR.SRF <- vector("list",N)
+names <- apply(expand.grid(MC, 1:6) %>% arrange(Var1), 1, paste, collapse="_CV")
+names(importance.MRMR.SRF) <- names
+```
+
+
+```{r}
+# fill container
+path <- "~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/importance_4000/"
+allfiles <- dir(path)
+mc <- paste("ranger.",MC, sep="")
+
+count <- 1
+for(m in seq_along(mc)){
+  mcfiles <- grep(mc[m], allfiles, value = TRUE)
+  for(i in seq_along(mcfiles)){
+    cat(m,"/",length(mc),i,"/",length(mcfiles),"\n")
+    load(paste(path, mcfiles[i],sep=""))
+    # 
+    importance.MRMR.SRF[[count]] <- results$ranger.forest$variable.importance
+    count <- count + 1
+  }
+}
+
+# save container
+save(importance.MRMR.SRF, file = paste(path,"importance.MRMR.SRF.RData",sep=""), compress = T)
+```
+
+
+# transform list to a data.frame
+new design has 4 columns: mc | cv | featurename | importance
+```{r}
+importance <- lapply(importance.MRMR.SRF, function(x) data.frame(var=names(x), importance = as.numeric(x)))
+importance <- do.call(rbind.data.frame, importance)
+MC <- strsplit(row.names(importance),"_CV") %>% lapply(function(x) x[[1]])
+CV <- strsplit(row.names(importance),"_CV") %>% lapply(function(x) x[[2]]) %>% unlist() %>% strsplit(split = "\\.") %>% lapply(function(x) x[[1]])
+importance <- cbind(importance, MC=unlist(MC), CV=unlist(CV))
+row.names(importance) <- NULL
+head(importance)
+```
+
+```{r}
+# aggregate importance by c(MC,var) to retrieve mean importance per CV
+importance.mean <- aggregate(importance ~ MC + var, data = importance, FUN = mean)
+```
+
+
+# get top 10 variables by MC
+```{r}
+imp.top10 <- importance.mean %>% group_by(MC) %>% top_n(10, importance) %>% arrange(MC,-importance)
+View(imp.top10)
+
+imp.top10.2 <- tidyr::spread(imp.top10, var,importance) 
+row.names(imp.top10.2) <- imp.top10.2$MC
+imp.top10.2$MC <- c()
+imp.top10.2 <- imp.top10.2 %>% round(4) %>% t()
+imp.top10.2[is.na(imp.top10.2)] <- ""
+
+# ranked variation
+imp.top10.ranked <- imp.top10 %>% mutate(importance.rank = rank(-importance)) %>% select(-importance)
+imp.top10.ranked.2 <- tidyr::spread(imp.top10.ranked, var,importance.rank) 
+row.names(imp.top10.ranked.2) <- imp.top10.ranked.2$MC
+imp.top10.ranked.2$MC <- c()
+imp.top10.ranked.2 <- imp.top10.ranked.2 %>% round(4) %>% t()
+imp.top10.ranked.2[is.na(imp.top10.ranked.2)] <- ""
+
+## retrieve domains
+d <- row.names(imp.top10.ranked.2)
+d <- strsplit(d, "\\.x\\.")
+d0 <- lapply(d, function(x) x[[1]]) %>%  unlist() %>% strsplit("\\.")
+d1 <- d0 %>%  lapply(function(x) x[1])# disease or drug
+d2 <- d0 %>%  lapply(function(x) x[2]) # feature
+d3 <- lapply(d, function(x) x[length(x)]) # time
+d3[d3=="AGE"] <- NA
+imp.top10.ranked.dom <-
+  data.frame(
+  domainAll = row.names(imp.top10.ranked.2),
+  domain1 = unlist(d1),
+  domain2 = unlist(d2),
+  domainTime = unlist(d3),
+  imp.top10.ranked.2
+  ) %>% arrange(domain1, domain2, domainTime)
+
+write.csv2(imp.top10.ranked.dom, file = paste(path,"importance.top10.csv",sep=""))
+```
+
+# feature enrichment test
+```{r}
+# step by step:
+# 1) get frequency of any domain in all_features
+# 2) get frequency of any domain in importance.mean by MC and cumulate importance scores by MC
+# 3) join 1) to 2), then do hypergeometric test and retrieve p-values and FDR
+# 4) choose an appropiate representation for 3)
+
+# 1)
+all_features.d1 <- strsplit(all_features$all_features %>% setdiff("ENROLID"), "\\.x\\.")
+all_features.d1 <- lapply(all_features.d1, function(x) x[1]) %>% unlist() 
+all_features.d1 <- data.frame(table(all_features.d1))
+knitr::kable(all_features.d1 %>% arrange(Freq))
+cat("total no. of features:", sum(all_features.d1$Freq))
+
+# 2)
+importance.mean$var <- as.character(importance.mean)
+importance.mean.d1 <- strsplit(importance.mean$var , "\\.x\\.")
+all_features.d1 <- lapply(all_features.d1, function(x) x[1]) %>% unlist() 
+
+```
+

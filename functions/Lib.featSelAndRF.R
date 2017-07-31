@@ -53,15 +53,17 @@ AddTreatmentFeatures <- function(rawDrugFeatures, patQuartTreat, enrolment, trai
   
   ## get non-sparse drug features (feature occurs in at least nPatFeatThres patients in *any* quarter)
   ## -> drop features which don't fulfill this
+  setDT(rawDrugFeatures)
+  setDT(treatMaxN)
   x.maxN <- treatMaxN[rawDrugFeatures, on = "SUBSTANCENAME", nomatch=0] # data.table inner join
   setDF(x.maxN)
-  omitCols                  <- which(colnames(x.maxN) %in% c("SUBSTANCENAME","max"))
+  omitCols <- which(colnames(x.maxN) %in% c("SUBSTANCENAME","max"))
   x.maxN[,-omitCols] <- x.maxN[,-omitCols] * x.maxN$max
   x.maxN$max <- c()
   omitCols <- which(colnames(x.maxN) %in% c("SUBSTANCENAME"))
-  nonSparseFeatures <- colSums(x.maxN[,-omitCols]) >= nPatFeatThres
-  nonSparseFeatures  <- c(TRUE, nonSparseFeatures) # 1st TRUE = SUBSTANCENAME
-  rawDrugFeatures.nonSparse <- rawDrugFeatures[,nonSparseFeatures] %>% filter(SUBSTANCENAME %in% x.maxN$SUBSTANCENAME)
+  nonSparseTreatFeatures <<- colSums(x.maxN[,-omitCols]) >= nPatFeatThres
+  nonSparseTreatFeatures  <<- c(TRUE, nonSparseTreatFeatures) # 1st TRUE = SUBSTANCENAME, assignment to global environment with <<- for recycling in the "else if" part below
+  rawDrugFeatures.nonSparse <- rawDrugFeatures[,nonSparseTreatFeatures] %>% filter(SUBSTANCENAME %in% x.maxN$SUBSTANCENAME)
   
   ## match pre-filtered drug features to x dataset
   setDT(rawDrugFeatures.nonSparse)
@@ -71,7 +73,7 @@ AddTreatmentFeatures <- function(rawDrugFeatures, patQuartTreat, enrolment, trai
   
   # aggregate by .(enrolid, quarter) to retrieve quantitative features using sum()
   names <- setdiff(colnames(x),c("ENROLID","QUARTER"))
-  x.feat <- dcast(x, ENROLID ~ QUARTER, fun.aggregate = sum, sep = ".x.", value.var = names, fill = 0) # summarise frequency for quantitative features
+  x.feat <- dcast(x , ENROLID ~ QUARTER, fun.aggregate = sum, sep = ".x.", value.var = names, fill = 0) # summarise frequency for quantitative features
   
   # drop features with don't occur in at least nPatFeatThres cases
   colnames <- x.feat[, lapply(.SD, function(x) sum(x>0) < nPatFeatThres) , .SDcols = !"ENROLID"]
@@ -88,7 +90,9 @@ AddTreatmentFeatures <- function(rawDrugFeatures, patQuartTreat, enrolment, trai
     
     # join drug features to treatment  
     setDT(x)
-    x <- x[rawDrugFeatures, on = "SUBSTANCENAME", nomatch=0] # data.table inner join
+    rawDrugFeatures.nonSparse <- rawDrugFeatures[,nonSparseTreatFeatures] # speed boost: nonSparseTreatFeatures is from global environment (assigned above via <<-)
+    rm(nonSparseTreatFeatures, envir = .GlobalEnv) # delete global variable
+    x <- x[rawDrugFeatures.nonSparse, on = "SUBSTANCENAME", nomatch=0] # data.table inner join
     
     # aggregate by .(enrolid, quarter) to retrieve quantitative features using sum()
     x[,SUBSTANCENAME := NULL]
@@ -146,9 +150,9 @@ AddDiagnosisFeatures <- function(rawDiseaseFeatures, patQuartDiag, enrolment, tr
   x.maxN[,-omitCols] <- x.maxN[,-omitCols] * x.maxN$max
   x.maxN$max <- c()
   omitCols <- which(colnames(x.maxN) %in% c("DIAG"))
-  nonSparseFeatures <- colSums(x.maxN[,-omitCols]) >= nPatFeatThres
-  nonSparseFeatures <- c(TRUE, nonSparseFeatures) # 1st TRUE = DIAG
-  rawDiseaseFeatures.nonSparse <- rawDiseaseFeatures[,nonSparseFeatures, with = FALSE] %>% filter(ICD9 %in% x.maxN$DIAG)
+  nonSparseDiagFeatures <<- colSums(x.maxN[,-omitCols]) >= nPatFeatThres
+  nonSparseDiagFeatures <<- c(TRUE, nonSparseDiagFeatures) # 1st TRUE = DIAG
+  rawDiseaseFeatures.nonSparse <- rawDiseaseFeatures[,nonSparseDiagFeatures, with = FALSE] %>% filter(ICD9 %in% x.maxN$DIAG)
   
   ## match pre-filtered disease features to x dataset
   setDT(rawDiseaseFeatures.nonSparse)
@@ -183,11 +187,14 @@ AddDiagnosisFeatures <- function(rawDiseaseFeatures, patQuartDiag, enrolment, tr
     setDT(x)
     setDT(rawDiseaseFeatures)
     suppressWarnings(rawDiseaseFeatures$ICD9 <- as.numeric(rawDiseaseFeatures$ICD9))
-    rawDiseaseFeatures <- rawDiseaseFeatures[, lapply(.SD, max), by = ICD9]
-    rawDiseaseFeatures <- rawDiseaseFeatures[complete.cases(rawDiseaseFeatures),]
+    rawDiseaseFeatures <- rawDiseaseFeatures[, lapply(.SD, max), by = ICD9] %>% na.omit()
+    
+    # use only non-spares features. the non-sparse features "nonSparseDiagFeatures" were computed above and <<- was utilized to assign it to the global environment
+    rawDiseaseFeatures.nonSparse <- rawDiseaseFeatures[,nonSparseDiagFeatures, with = FALSE]
+    rm(nonSparseDiagFeatures, envir = .GlobalEnv) # delete global variable
     
     # get non-sparse disease features (feature occurs in at least nPatFeatThres patients in *any* quarter)
-    x <- merge(x,rawDiseaseFeatures, by.x = "DIAG", by.y="ICD9", all.x = 0) 
+    x <- merge(x,rawDiseaseFeatures.nonSparse, by.x = "DIAG", by.y="ICD9", all.x = 0) 
     x[,DIAG := NULL]
     
     # aggregate by .(enrolid, quarter) to retrieve qualitative features using max()
@@ -232,26 +239,14 @@ GetTrainingFeatureMatrix <- function(rawDrugFeatures, patQuartTreat, trainingDat
   mainComorb.train.surv <- trainingData
   
   # create feature matrix
+  cat("\n Join all features...\n")
   mainComorb.featMat <- 
     mainComorb.train.surv %>% 
     inner_join(mainComorb.train.pat) %>%
     inner_join(mainComorb.train.diag) %>%
     inner_join(mainComorb.train.treat)
   
-  # check for features later than quarter 2
-  cat("\n Join all features...\n")
-  source("functions/NoMedicalHistoryColumns.R")
-  noMHColumns <- NoMedicalHistoryColumns(mainComorb.featMat)
-  
-  return(
-    list(
-      featureMatrix = mainComorb.featMat
-      # treatmentFeatures = mainComorb.train.treat,
-      # diagnosisFeatures = mainComorb.train.diag,
-      # patientFeatures = mainComorb.train.pat,
-      # survivalFeatures = mainComorb.train.surv
-    )
-  )
+  return(list(featureMatrix = mainComorb.featMat))
 }
 
 
@@ -296,43 +291,163 @@ GetTestFeatureMatrix <- function(trainingFeatures, rawDrugFeatures, patQuartTrea
     inner_join(mainComorb.test.diag) %>%
     inner_join(mainComorb.test.treat)
   
-  # drop columns not covered by feature selection
-  
-  return(
-    list(
-      featureMatrix = mainComorb.featMat
-      # treatmentFeatures = mainComorb.test.treat,
-      # diagnosisFeatures = mainComorb.test.diag,
-      # patientFeatures = mainComorb.test.pat,
-      # survivalFeatures = mainComorb.test.surv
-    ))
+ #
+  return(list(featureMatrix = mainComorb.featMat))
 }
 
 ####################################################################################################
 
-featureSelectionMRMR <- function(featureMatrix, feature_count = 500){
-  setDF(featureMatrix)
-  featureMatrix$time <- as.numeric(featureMatrix$time)
+# featureSelectionMRMR <- function(featureMatrix, feature_count = 500){
+#   
+#   # type conversion for compatiblity
+#   featureMatrix$AGE <- as.numeric(featureMatrix$AGE)
+#   featureMatrix$time <- as.numeric(featureMatrix$time)
+#   
+#   setDF(featureMatrix)
+#   
+#   # SEXC, REGIONC, ... are inappropiate for mRMRe feature selection, because type must be either numeric, survival or ordered factor
+#   # ENROLID is no feature, time and status are response variables
+#   c1 <- which(colnames(featureMatrix) %in% c("REGIONC","SEXC","COVERAGE_OF_PRESCRIPTIONS", "HLTHPLNC", "PLANTYPC"))
+#   c2 <- which(colnames(featureMatrix) %in% c("ENROLID"))
+#   cc <- c(c1,c2)
+#   featureMatrix.fs <- featureMatrix[,-cc] # select columns appropiate for mRMRe algorithm
+#   
+#   # create mRMR.data object
+#   dd             <- mRMR.data(data = featureMatrix.fs)
+#   
+#   # uncomment to stratify by status for bootstrap
+#     # sampleStrata(dd) <-  as.factor(featureMatrix.fs$status)
+#   
+#   # select time and status  as reference variables to select features which correlated most to status and time,
+#   # but a minimum correlated to each other (= most redundant) 
+#   target_indices <- which(colnames(featureMatrix.fs) %in% c("time","status"))
+#   exect <- system.time(fs <- mRMR.ensemble(data = dd, target_indices = target_indices, feature_count = feature_count, solution_count = 1))
+#   # see also: http://stackoverflow.com/questions/36502796/using-mrmre-in-r
+#   
+#   ## print the names of the selected features for (each distinct) mRMR solutions
+#   featureNames <- print(apply(solutions(fs)[[1]], 2, function(x, y) { return(y[x]) }, y=featureNames(dd)))
+#   
+#   return(list(exec.time = exect, featureSelectionObject = fs, featureNames = featureNames))
+# }
+
+####################################################################################################
+
+featureSelectionMRMR2 <- function(featureMatrix){
   
-  # GENDER and REGIONC are inappropiate for mRMRe feature selection, because type must be either numeric, survival or ordered factor
-  c1                 <- which(colnames(featureMatrix) %in% c("ENROLID","GENDER","REGIONC"))
-  # featureMatrix.c1 <- featureMatrix[,c1]
-  featureMatrix.fs <- featureMatrix[,-c1] # select columns appropiate for mRMRe algorithm
+  # survival object as endpoint
+  featureMatrix$Surv <- with(featureMatrix, Surv(time, status, type = "right"))
+  featureMatrix$time <- featureMatrix$status <- NULL
   
-  # create mRMR.data object
-  dd             <- mRMR.data(data = featureMatrix.fs)
-  
-  # uncomment to stratify by status for bootstrap
-    # sampleStrata(dd) <-  as.factor(featureMatrix.fs$status)
-  
-  # select time and status as variables as reference variables to select features which correlated most to status and time,
-  # but a minimum correlated to each other (= most redundant) 
-  target_indices <- which(colnames(featureMatrix.fs) %in% c("time","status"))
-  exect <- system.time(fs <- mRMR.ensemble(data = dd, target_indices = target_indices, feature_count = feature_count, solution_count = 1))
-  # see also: http://stackoverflow.com/questions/36502796/using-mrmre-in-r
-  
-  ## print the names of the selected features for (each distinct) mRMR solutions
+  # run mRMR
+  feature_count <- ncol(featureMatrix) -1 # -1 to exclude the "Surv" column
+  dd <- mRMR.data(data = featureMatrix)
+  target_indices <- which(colnames(featureMatrix) %in% c("Surv"))
+  fs <- mRMR.ensemble(data = dd, target_indices = target_indices, feature_count = feature_count, solution_count = 1)
   featureNames <- print(apply(solutions(fs)[[1]], 2, function(x, y) { return(y[x]) }, y=featureNames(dd)))
   
-  return(list(exec.time = exect, featureSelectionObject = fs, featureNames = featureNames))
+  # - drop "Surv" columns: this is not feature! It's a bug: MRMR fills up to number of <feature_count> features with the
+  # target index feature name
+  # - keep only features with score > 0
+  fs <- data.frame(scores = unlist(fs@scores), featureNames) %>% filter(scores > 0) %>% filter(featureNames != "Surv")
+  return(fs)
+}
+
+##############
+
+dropSparseFeatures <- function(cv.samp, featureMatrix, nCrossValidation){
+  setDF(featureMatrix)
+  cat("drop sparse features","\n")
+  cat("  Original dimension: ",dim(featureMatrix),"\n")
+  # drop features from feature matrix which don't occur in at least 5% of a particular CV schema.
+  # stay conservative: take the smallest CV subset
+  setDT(cv.samp)
+  # cv.samp[, .N, by = .(main.comorb, cv.samp)] # overview
+  minSamp     <- cv.samp[, .N, by = .(main.comorb, cv.samp)][,min(N)]
+  cutOff      <- minSamp * 0.05 * (nCrossValidation-1)
+  numericCols <- which(sapply(featureMatrix, class) == "numeric")
+  colsums     <- apply(featureMatrix[,numericCols] >0, MARGIN = 2, sum)
+  dropCols    <- numericCols[colsums < cutOff]
+  featureMatrix  <- featureMatrix[,-dropCols]
+  cat("  Dimension without sparse features: ",dim(featureMatrix),"\n")
+  return(setDT(featureMatrix))
+}
+
+##############
+
+# scaleTo01 <- function(featureMatrix) {
+#   # in except of enrolid, scale every (numeric) feature to a [0,1] range
+#   cat("scaling numeric features...\n")
+#   numericCols <- which(sapply(featureMatrix, class) %in% c("numeric","integer"))
+#   dropEnrolid <- which(names(featureMatrix) == "ENROLID")
+#   numericCols <- setdiff(numericCols, dropEnrolid)
+#   maxFeatVals <- apply(featureMatrix[,numericCols,with=F], MARGIN = 2, function(x) max(x, na.rm = T))
+#   
+#   if(any(maxFeatVals==0)) {
+#     maxIsZero <- which(maxFeatVals == 0)
+#     maxFeatVals[maxIsZero] <- 1
+#   }
+#   
+#   # finally, scaling. then limit to 6 digits
+#   setDF(featureMatrix)
+#   featureMatrix[,numericCols] <- sweep(featureMatrix[,numericCols],2,maxFeatVals,"/") %>% round(6)
+#   return(featureMatrix)
+# }
+
+
+###############
+
+#' Title
+#'
+#' @param i 
+#' @param cv.samp 
+#' @param savepath 
+#' @param FM 
+#' @param iterator 
+#'
+#' @param 
+#' @return
+#' @export
+#'
+#' @examples
+MRMRWrapperForParallelization <- function(i, iterator, cv.samp, FM, savepath) {
+  # set "looping" variables
+  mc <- iterator$MC[i]
+  k <- iterator$CV[i]
+  # get test + training dataset
+  cv.samp.mc <- copy(cv.samp)
+  cv.samp.mc[main.comorb != mc, c("status","time","main.comorb") := list(0, maxixday,"censored") ]
+  cv.samp.mc <- cv.samp.mc %>% select(-maxixday) %>% distinct()
+  train <- cv.samp.mc %>% filter(cv.samp != k) %>%  select(ENROLID, time, status)
+  test <- cv.samp.mc %>% filter(cv.samp == k) %>%  select(ENROLID, time, status)
+  
+  # run MRMR
+  GetMRMRTestAndTrainingMatrices(
+    train = train,
+    test = test,
+    featureMatrix = FM,
+    mc = mc, 
+    k = k, 
+    savepath = savepath
+  ) 
+}
+
+
+#' Title
+#'
+#' @param MC 
+#' @param CV 
+#' @param cv.samp 
+#' @param FM 
+#' @param savepath 
+#' @param mc.cores 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+ParallelMRMR <- function(MC, CV, cv.samp, FM, savepath, mc.cores = 4) {
+  
+  iterator <- expand.grid(MC, CV, stringsAsFactors = F)
+  colnames(iterator) <- c("MC","CV")
+  mclapply(1:nrow(iterator), function(i) MRMRWrapperForParallelization(i, iterator, cv.samp, FM, savepath), mc.preschedule = F, mc.cores = mc.cores)
 }

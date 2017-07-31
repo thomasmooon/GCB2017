@@ -22,28 +22,30 @@ library(gplots)
 # functions #
 #############
 
-KeepIncidentAndCensored <- function(PATIENTS_AGE_REGION) {
+KeepIncidentAndCensored <- function(truven, constr) {
   # - keep only patients which have
   # -- an incident main-comorbidity (= event subpopulation)
   # -- or no main-comorbidity at any time (= censored subpopulation)
   
   #  A: patients without any main-comorbidity
-  anyMc  <- PATIENTS_AGE_REGION %>% filter(!is.na(MAIN.COMORB)) %>% dplyr::select(ENROLID) %>% distinct()
-  allPat <- PATIENTS_AGE_REGION %>% dplyr::select(ENROLID) %>% distinct()
-  A   <- setdiff(allPat$ENROLID, anyMc$ENROLID)
+  hasAnyMC  <- truven %>% filter(!is.na(MAIN.COMORB)) %>% dplyr::select(ENROLID) %>% distinct()
+  allPat <- truven %>% dplyr::select(ENROLID) %>% distinct()
+  withoutAnyMc  <- setdiff(allPat$ENROLID, hasAnyMC$ENROLID)
   
   # patients with main-comorbidities
-  main.comorb.first.ixday <- PATIENTS_AGE_REGION %>% filter(MAIN.COMORB != "") %>% dplyr::select(ENROLID, IXDAYS,  MAIN.COMORB) %>% distinct()
+  main.comorb.first.ixday <- truven %>% filter(MAIN.COMORB != "") %>% dplyr::select(ENROLID, IXDAYS,  MAIN.COMORB) %>% distinct()
   main.comorb.first.ixday <- aggregate(IXDAYS ~., data = main.comorb.first.ixday, FUN = min)
   
   # B: patients with incident main-comorbidities
-  B <- main.comorb.first.ixday %>% filter(IXDAYS >= 180) %>% dplyr::select(ENROLID) %>% distinct()
+  B <- main.comorb.first.ixday %>% filter(IXDAYS >= constr$incidendeThreshold) %>% dplyr::select(ENROLID) %>% distinct()
   
-  # combine A and B to retrieve relevant population
-  relPop <- c(A, B$ENROLID)
+  # combine withoutAnyMc and B to retrieve relevant population
+  cat("\nnumber of patients without any MC: ", length(withoutAnyMc))
+  cat("\nnumber of patients with any MC: ", n_distinct(B$ENROLID))
+  relPop <- c(withoutAnyMc, B$ENROLID)
   
-  PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% relPop)
-  return(PATIENTS_AGE_REGION)
+  truven <- truven %>% filter(ENROLID %in% relPop)
+  return(truven)
 }
 
 ####################
@@ -101,22 +103,22 @@ MainComorbChildren <- function() {
 
 ####################
 
-AddMainComorb <- function(PATIENTS_AGE_REGION,cohort="adult") {
+AddMainComorb <- function(truven,cohort="adult") {
   
   if (cohort=="adult") {
   MAIN.COMORB.PHEWAS <- MainComorbAdult()
   MAIN.COMORB.PHEWAS <- MAIN.COMORB.PHEWAS$MAIN.COMORB.PHEWAS
   # add main-comorbidity to patients table
-  PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
-  return(PATIENTS_AGE_REGION)
+  truven <- left_join(truven, MAIN.COMORB.PHEWAS)
+  return(truven)
   }
   
   if (cohort=="children") {
     MAIN.COMORB.PHEWAS <- MainComorbChildren()
     MAIN.COMORB.PHEWAS <- MAIN.COMORB.PHEWAS$MAIN.COMORB.PHEWAS
     # add main-comorbidity to patients table
-    PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, MAIN.COMORB.PHEWAS)
-    return(PATIENTS_AGE_REGION)
+    truven <- left_join(truven, MAIN.COMORB.PHEWAS)
+    return(truven)
   }
 }
 
@@ -149,14 +151,14 @@ Diag_frequency <- function(P) {
 
 #####################
 # standardized filter for patients table
-FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, sparse = FALSE, cohort = "adult") {
+FILTER_truven <- function(TABLE04SAS7BDAT, sparse = FALSE, cohort = "adult") {
   
-  # if (!sparse) PATIENTS_AGE_REGION <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
-  if (sparse) PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+  # if (!sparse) truven <- TABLE04SAS7BDAT %>% dplyr::select(-NDCNUM, -PHARMCLS2, -PHARMCLS3, -PHARMCLS4, -PHARMCLS5, -THERCLS, -THERGRP)
+  if (sparse) truven <- TABLE04SAS7BDAT
   
   # correct / complete IXDAYS
-  newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
-  PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
+  newIXDAYS                  <- truven$STARTDT - truven$INDEXDT
+  truven$IXDAYS <- as.numeric(newIXDAYS)
   
   source("functions/n_patient_per_period.R")
   source("functions/patient_monthly_enrolment.R")
@@ -169,46 +171,46 @@ FILTER_PATIENTS_AGE_REGION <- function(TABLE04SAS7BDAT, sparse = FALSE, cohort =
   ##################
   
   # Keep only patients within valid time period 
-  PATIENTS_AGE_REGION <- filter_patient_medHist_follUp(PATIENTS_AGE_REGION,lbound=-2*365,ubound = 0*365)
+  truven <- filter_patient_medHist_follUp(truven,lbound=-2*365,ubound = 0*365)
   # only patients with non-negative DAYSUP
-  PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
+  truven <- patient_nonNegative_DAYSUPP(truven)
   # Add Age and Regional Information
-  PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
+  truven <- addAgeRegion(truven)
   
   # adult only (AGE >= 18)
   if(cohort == "adult")  { 
-    PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
+    truven <- truven %>% filter(AGE >= 18) %>% distinct()
   } else if(cohort == "children") {
-    PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE <= 16) %>% distinct()
+    truven <- truven %>% filter(AGE <= 16) %>% distinct()
   }
   
   # deseparate substancenames
-  PATIENTS_AGE_REGION <- parseColByIdx(PATIENTS_AGE_REGION,"SUBSTANCENAME",sep = ";")
+  truven <- parseColByIdx(truven,"SUBSTANCENAME",sep = ";")
   # set AED flag
-  PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
+  truven <- setAEDFlag(truven)
   # only patients which were treated with AEDs
-  pat.with.aeds <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% dplyr::select(ENROLID) %>% distinct()
-  PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
+  pat.with.aeds <- truven %>% filter(isAED == TRUE) %>% dplyr::select(ENROLID) %>% distinct()
+  truven <- truven %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
   # add phewas and phewas_hl
-  PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+  truven <- add_Phew_PhewHighlevel(truven)
   
   # add main comorbidities
   if(cohort == "adult") {
-    PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "adult")
+    truven <- AddMainComorb(truven, cohort = "adult")
     # Patch ICD9 Code V12.54
     source("functions/Patch_V12.54.R")
-    PATIENTS_AGE_REGION <- Patch_V12.54(PATIENTS_AGE_REGION)
+    truven <- Patch_V12.54(truven)
   } else if (cohort == "children") {
-    PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "children")
+    truven <- AddMainComorb(truven, cohort = "children")
   }
   
   # return
-  return(PATIENTS_AGE_REGION)
+  return(truven)
 }
 
 ####################
 
-FILTER_PATIENTS_AGE_REGION.T2 <- function(x, cohort = "adult") {
+FILTER_truven.T2 <- function(x, cohort = "adult") {
 
   # *.T2 consider patched TABLE04.T2 with corrected IXDAYS
   
@@ -226,39 +228,39 @@ FILTER_PATIENTS_AGE_REGION.T2 <- function(x, cohort = "adult") {
   
   load("data/patches/enrol.MH.RData")
   enrol.MH <- enrol.MH %>% filter(medicalHistory >= 2*365) %>% dplyr::select(ENROLID)
-  PATIENTS_AGE_REGION <- x %>% filter(ENROLID %in% enrol.MH$ENROLID)
+  truven <- x %>% filter(ENROLID %in% enrol.MH$ENROLID)
   
   # only patients with non-negative DAYSUP
-  PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
+  truven <- patient_nonNegative_DAYSUPP(truven)
   # Add Age and Regional Information
-  PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
+  truven <- addAgeRegion(truven)
   
   # adult only (AGE >= 18)
   if(cohort == "adult")  { 
-    PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% distinct()
+    truven <- truven %>% filter(AGE >= 18) %>% distinct()
   } else if(cohort == "children") {
-    PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(AGE <= 16) %>% distinct()
+    truven <- truven %>% filter(AGE <= 16) %>% distinct()
   }
   
   # deseparate substancenames
-  PATIENTS_AGE_REGION <- parseColByIdx(PATIENTS_AGE_REGION,"SUBSTANCENAME",sep = ";")
+  truven <- parseColByIdx(truven,"SUBSTANCENAME",sep = ";")
   # set AED flag
-  PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
+  truven <- setAEDFlag(truven)
   # only patients which were treated with AEDs
-  pat.with.aeds <- PATIENTS_AGE_REGION %>% filter(isAED == TRUE) %>% dplyr::select(ENROLID) %>% distinct()
-  PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
+  pat.with.aeds <- truven %>% filter(isAED == TRUE) %>% dplyr::select(ENROLID) %>% distinct()
+  truven <- truven %>% filter(ENROLID %in% pat.with.aeds$ENROLID)
   # add phewas and phewas_hl
-  PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+  truven <- add_Phew_PhewHighlevel(truven)
   
   # add main comorbidities
   if(cohort == "adult") {
-    PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "adult")
+    truven <- AddMainComorb(truven, cohort = "adult")
   } else if (cohort == "children") {
-    PATIENTS_AGE_REGION <- AddMainComorb(PATIENTS_AGE_REGION, cohort = "children")
+    truven <- AddMainComorb(truven, cohort = "children")
   }
   
   # return
-  return(PATIENTS_AGE_REGION)
+  return(truven)
 }
 
 ####################
@@ -404,21 +406,21 @@ normalizeToRowSums <- function(m){
 
 # add age and regional information to PATIENT_AGE_REGION
 ########################################################
-addAgeRegion <- function(PATIENTS_AGE_REGION) {
+addAgeRegion <- function(truven) {
   TABLE01SAS7BDAT     <- tbl(src,"TABLE01SAS7BDAT") # origin source / copy of: table01sas7bdat
   TABLE01SAS7BDAT     <- TABLE01SAS7BDAT %>% dplyr::select(ENROLID, AGE, REGION, REGIONC, SEX, GENDER) %>% collect()
-  PATIENTS_AGE_REGION <- dplyr::select(PATIENTS_AGE_REGION, -REGION, -REGIONC, -SEX, -GENDER )
-  PATIENTS_AGE_REGION <- left_join(PATIENTS_AGE_REGION, TABLE01SAS7BDAT, by = "ENROLID") 
-  return(PATIENTS_AGE_REGION)
+  truven <- dplyr::select(truven, -REGION, -REGIONC, -SEX, -GENDER )
+  truven <- left_join(truven, TABLE01SAS7BDAT, by = "ENROLID") 
+  return(truven)
 }
 
 # filter patient by medical history and follow up span
 ######################################################
-filter_patient_medHist_follUp <- function(PATIENTS_AGE_REGION, lbound=-1e6, ubound=1e6){
+filter_patient_medHist_follUp <- function(truven, lbound=-1e6, ubound=1e6){
   load("./output/patDayMinMax.RData")
   patDayMinMax            <- patDayMinMax %>% filter(ixMin <= lbound,ixMax >= ubound) 
-  PATIENTS_AGE_REGION     <- inner_join(PATIENTS_AGE_REGION,patDayMinMax %>% dplyr::select(ENROLID),by="ENROLID")
-  return(PATIENTS_AGE_REGION)
+  truven     <- inner_join(truven,patDayMinMax %>% dplyr::select(ENROLID),by="ENROLID")
+  return(truven)
 }
 
 # ranking plot
@@ -459,7 +461,7 @@ aed_ranking <- function(patient_table) {
   
   # compute frequency and rank of AEDs by the number of patients whom received them
   nPat <- 
-    PATIENTS_AGE_REGION %>% 
+    truven %>% 
     dplyr::select(ENROLID) %>% 
     distinct() %>% 
     tally()

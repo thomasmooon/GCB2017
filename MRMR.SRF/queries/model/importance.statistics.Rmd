@@ -1,0 +1,271 @@
+---
+title: "importance statistics ranger SRF"
+output: html_notebook
+---
+
+setup
+```{r}
+library(dplyr)
+library(data.table)
+path <- "~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/importance_4000/"
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/FM.all.featurenames.RData")
+load("~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/importance_4000/importance.MRMR.SRF.RData")
+```
+
+
+
+# transform list to a data.frame
+new design has 4 columns: mc | cv | featurename | importance
+```{r}
+importance <- lapply(importance.MRMR.SRF, function(x) data.frame(var=names(x), importance = as.numeric(x)))
+importance <- do.call(rbind.data.frame, importance)
+MC <- strsplit(row.names(importance),"_CV") %>% lapply(function(x) x[[1]])
+CV <- strsplit(row.names(importance),"_CV") %>% lapply(function(x) x[[2]]) %>% unlist() %>% strsplit(split = "\\.") %>% lapply(function(x) x[[1]])
+importance <- cbind(importance, MC=unlist(MC), CV=unlist(CV))
+row.names(importance) <- NULL
+head(importance)
+```
+
+```{r}
+# drop features with negative importance
+importance <- importance %>% filter(importance > 0)
+
+# aggregate importance by c(MC,var) to retrieve mean importance per CV
+importance.mean <- data.table(importance)[, .(importance.mean=mean(importance), importance.sd = sd(importance)), by = .(MC,var)] %>% data.frame()
+importance.mean$MC <- as.character(importance.mean$MC)
+importance.mean$var <- as.character(importance.mean$var)
+```
+
+
+# get top 10 variables by MC
+```{r}
+imp.top10 <- importance.mean %>% group_by(MC) %>% top_n(10, importance.mean) %>% arrange(MC,-importance.mean) %>% select(-importance.sd)
+
+imp.top10.2 <- tidyr::spread(imp.top10 , var,importance.mean) 
+row.names(imp.top10.2) <- imp.top10.2$MC
+imp.top10.2$MC <- c()
+imp.top10.2 <- imp.top10.2 %>% round(4) %>% t()
+imp.top10.2[is.na(imp.top10.2)] <- ""
+
+# ranked variation
+imp.top10.ranked <- imp.top10 %>% mutate(importance.rank = rank(-importance.mean)) %>% select(-importance.mean)
+imp.top10.ranked.2 <- tidyr::spread(imp.top10.ranked, var,importance.rank) 
+row.names(imp.top10.ranked.2) <- imp.top10.ranked.2$MC
+imp.top10.ranked.2$MC <- c()
+imp.top10.ranked.2 <- imp.top10.ranked.2 %>% round(4) %>% t()
+imp.top10.ranked.2[is.na(imp.top10.ranked.2)] <- ""
+
+## retrieve domains
+d <- row.names(imp.top10.ranked.2)
+d <- strsplit(d, "\\.x\\.")
+d0 <- lapply(d, function(x) x[[1]]) %>%  unlist() %>% strsplit("\\.")
+d1 <- d0 %>%  lapply(function(x) x[1])# disease or drug
+d2 <- d0 %>%  lapply(function(x) x[2]) # feature
+d3 <- lapply(d, function(x) x[length(x)]) # time
+d3[d3=="AGE"] <- NA
+imp.top10.ranked.dom <-
+  data.frame(
+  domainAll = row.names(imp.top10.ranked.2),
+  domain1 = unlist(d1),
+  domain2 = unlist(d2),
+  domainTime = unlist(d3),
+  imp.top10.ranked.2
+  ) %>% arrange(domain1, domain2, domainTime)
+
+write.csv2(imp.top10.ranked.dom, file = paste(path,"importance.top10.csv",sep=""))
+```
+
+# feature enrichment test
+
+## for features
+```{r}
+# step by step:
+# 1) get frequency of any domain in all_features
+# 2) get frequency of any domain in importance.mean by MC and cumulate importance scores by MC
+# 3) join 1) to 2) 
+# 3.1) change values of general features in table(3) to 1 (e. g. PLANTYP expanded to 9 features due to dummy coding -> reset to 1)
+# 3.2) then do hypergeometric test and retrieve p-values and FDR
+# 4) choose an appropiate representation for 3)
+
+# 1)
+all_features.d1 <- strsplit(all_features$all_features %>% setdiff("ENROLID"), "\\.x\\.")
+all_features.d1 <- lapply(all_features.d1, function(x) x[1]) %>% unlist() 
+all_features.d1 <- data.frame(table(all_features.d1))
+knitr::kable(all_features.d1 %>% arrange(Freq))
+cat("total no. of features:", sum(all_features.d1$Freq))
+
+# 2)
+importance.mean$var <- as.character(importance.mean$var)
+importance.mean.d1 <- strsplit(importance.mean$var , "\\.x\\.")
+importance.mean.d1 <- lapply(importance.mean.d1, function(x) x[1]) %>% unlist() 
+importance.mean <- cbind(domain = importance.mean.d1, importance.mean)
+importance.mean$count <- 1
+importance.mean.s <-
+  importance.mean %>% group_by(MC, domain) %>% summarise(
+  importance.mean.sum = sum(importance.mean),
+  importance.mean.sd = sum(importance.sd, na.rm =T),
+  count.sum = sum(count)
+  ) # summarised grouping
+
+# 3) test enrichment
+imp.enr <- left_join(importance.mean.s, all_features.d1, by = c("domain" = "all_features.d1")) %>% rename(RFFreq = count.sum, totalFreq = Freq)
+
+# 3.1)
+imp.enr$RFFreq[imp.enr$totalFreq==1] <- 1
+
+# 3.2) pval
+imp.enr$pval <- NA
+nFeatTotal <- sum(all_features.d1$Freq)
+nFeatMRMR <- 500
+
+for(i in seq_len(nrow(imp.enr))) {
+nFeatDomainRF <-imp.enr$RFFreq[i]
+nFeatDomainAll <- imp.enr$totalFreq[i]
+  imp.enr$pval[i] <- 1-phyper(nFeatDomainRF, nFeatDomainAll, nFeatTotal-nFeatDomainAll, nFeatMRMR)
+}
+
+# 3.2)
+imp.enr$fdr <- fdrtool::fdrtool(imp.enr$pval, statistic = "pvalue")$qval
+write.csv2(imp.enr, file = paste(path,"ImportanceByM",sep=""))
+
+```
+
+## for quarters
+```{r}
+# step by step
+# 1) consider only longitidunal data
+# 2) count frequency per quarter in all_features
+# 3) count frequency per quarter in RF features
+# 3.1) first sum by c(MC,CV,quarter)
+# 3.2) second, average by c(MC)
+# 4) join 2) and 3)
+# 5) compute  enrichment
+
+# 1)
+imp.longit <- importance %>% select(-importance)
+imp.longit$var <- as.character(imp.longit$var)
+imp.longit.d1 <- strsplit(imp.longit$var, split = "\\.x\\.") %>% lapply(function(x) x[[1]]) %>% unlist()
+imp.longit$domain <- imp.longit.d1
+
+# drop non-longitidunal data
+longitid <- all_features.d1$all_features.d1[all_features.d1$Freq ==1] %>% as.character()
+imp.longit <- imp.longit %>% filter(!(domain %in% longitid))
+
+# 2)
+all_features.longitid <- all_features %>% filter(!(all_features %in% c(longitid,"ENROLID")))
+all_features.longitid <- as.character(all_features.longitid$all_features)
+all_features.longitid <- strsplit(all_features.longitid, "\\.x\\.") %>% lapply(function(x) x[length(x)]) %>% unlist()
+all_features.longitid <- data.frame(table(all_features.longitid)) %>% rename(quarter=all_features.longitid)
+
+# 3)
+imp.longit$quarter <- NA
+imp.longit$quarter <- imp.longit$var %>% strsplit("\\.x\\.") %>% lapply(function(x) x[length(x)]) %>% unlist()
+imp.longit$n <- 1
+imp.longit <- aggregate(n ~ MC + CV + quarter, data = imp.longit %>% select(-var,-domain), FUN = sum)  # 3.1)
+setDT(imp.longit)
+imp.longit <- imp.longit[,.(mean=round(mean(n),1), sd = round(sd(n),1)), by = .(MC,quarter)]
+setDF(imp.longit)
+
+# 4)
+imp.longit.enr <- left_join(imp.longit, all_features.longitid, by = "quarter")
+
+# 5)
+
+imp.longit.enr$pval <- NA
+nFeatTotal <- sum(all_features.d1$Freq)
+nFeatMRMR <- 500
+
+for(i in seq_len(nrow(imp.longit.enr))) {
+nFeatDomainRF <-imp.longit.enr$mean[i]
+nFeatDomainAll <- imp.longit.enr$Freq[i]
+  imp.longit.enr$pval[i] <- 1-phyper(nFeatDomainRF, nFeatDomainAll, nFeatTotal-nFeatDomainAll, nFeatMRMR)
+}
+
+imp.longit.enr$fdr <- fdrtool::fdrtool(imp.longit.enr$pval, statistic = "pvalue")$qval
+
+# 5) output
+
+```
+
+
+# retrieve importance for interesting features by main-comorbidity
+
+Disregard longitidunal information, by 1) deleting the time-prefin, 2) sum the importance of same 
+features by c(main-comorbidity, time)
+
+```{r}
+head(importance.mean)
+# step by step
+# 1.1) extract domain
+# 1.2) extract subdomain
+# 2.1) define interesting features
+# 2.2) filter by interesting features
+# 3) drop quarter information, then aggregate by c(main-comorbidity, domain)
+# 4.1) retrieve subdomains + subdomain counts from all_features
+# 4.2) join 4) and 3) and do enrichment test
+
+# 5) choose an appropiate output representation
+
+# 1.1) already done before
+
+# 1.2)
+
+# 2.1)
+ifeat <- c("QUARTQTY", "DRUG.PATHWAY", "DISEASE.BIOMARKER", "DRUG.THRCLDS", "DISEASE.GO", "DRUG.GO")
+
+# 2.2)
+imp.subdomain <- importance.mean %>% filter(domain %in% ifeat) %>% select(-count)
+
+# 3)
+subdomain <-
+  imp.subdomain$var %>% strsplit("\\.x\\.") %>% lapply(function(x)
+  x[2]) %>% unlist() %>% strsplit("_") %>% lapply(function(x)
+  x[1]) %>% unlist() %>% data.frame(stringsAsFactors = F) %>% unlist()
+imp.subdomain$subdomain <- subdomain
+imp.subdomain$domain.subdomain <- paste(imp.subdomain$domain, imp.subdomain$subdomain, sep = ".x.")
+
+# 4.1)
+
+all_features$domain <- 
+  all_features$all_features %>% strsplit("\\.x\\.") %>% lapply(function(x) x[1]) %>% unlist()
+
+all_features$subdomain <- 
+  all_features$all_features %>% strsplit("\\.x\\.") %>% lapply(function(x)
+  x[2]) %>% unlist() %>% strsplit("_") %>% lapply(function(x)
+  x[1]) %>% unlist() %>% data.frame(stringsAsFactors = F) %>% unlist()
+
+all_features$domain.subdomain <- paste(all_features$domain, all_features$subdomain, sep=".x.")
+all_features.subdomains <- data.table(all_features)[, .N, by = domain.subdomain] %>% data.frame(stringsAsFactors = F)
+
+#
+imp.subdomain <-
+  data.table(na.omit(imp.subdomain))[, .(importance.subdomain.sum = sum(importance.mean),
+  N = .N), by = .(MC, domain, subdomain, domain.subdomain)] %>% data.frame(stringsAsFactors = F)
+
+# 4.2)
+
+# join
+imp.subdomain <- left_join(imp.subdomain, all_features.subdomains, by = "domain.subdomain") %>% rename(N.anyRF = N.x, N.total = N.y)
+
+# enrichment (test)
+imp.subdomain$pval <- NA
+
+for(i in seq_len(nrow(imp.subdomain))) {
+nFeatDomainRF <- imp.subdomain$N.anyRF[i]
+nFeatDomainAll <- imp.subdomain$N.total[i]
+  imp.subdomain$pval[i] <- 1-phyper(nFeatDomainRF, nFeatDomainAll, nFeatTotal-nFeatDomainAll, nFeatMRMR)
+}
+
+imp.subdomain$fdr <- fdrtool::fdrtool(imp.subdomain$pval, statistic = "pvalue")$qval
+
+# 5)
+imp.subdomain.export <-
+  imp.subdomain %>% select(MC, domain, subdomain, N.anyRF, N.total, pval, fdr) %>%
+  arrange(MC, domain, subdomain)
+```
+
+
+```{r}
+
+```
+

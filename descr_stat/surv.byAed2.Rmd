@@ -1,0 +1,272 @@
+---
+title: "testing difference of survival curves, by AED, by MC"
+subtitle: "re-do epd183"
+author: "Thomas Gerlach"
+output: html_notebook
+date: "2017 Jun 14"
+---
+
+# setup global variables
+```{r, echo = FALSE, include = FALSE}
+rm(list=setdiff(ls(),"all_events.icd9"))
+library(data.table)
+library(survival)
+knitr::opts_chunk$set(warning = FALSE, fig.width = 10,fig.height = 7)
+
+source("~/epilepsie_preprocessing_descrStat/z_start.R") # initalize netezza DB, load core data
+if(!exists("all_events.icd9")) load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/all_events.icd9.RData")
+
+P <-  as.data.frame(all_events.icd9$data)
+P <- AddMainComorb(P, cohort = "adult")
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.RData")
+```  
+
+```{r}
+
+# patienten im trainingszeitraum, die ein AED erhalten haben
+P2 <- P %>% filter(isAED == TRUE, IXDAYS >= -2*365, IXDAYS <= 90, !is.na(SUBSTANCENAME)) %>% 
+  select(ENROLID, SUBSTANCENAME) %>% distinct()
+
+# nur patienten, die aeds im trainingszeitraum erhalten haben
+censored.incident <- as.data.frame(censored.incident)
+P2 <- as.data.frame(P2)
+P2$ENROLID <- as.numeric(P2$ENROLID)
+P2$hasAED <- 1
+censored.incident$ENROLID <- as.numeric(censored.incident$ENROLID)
+censored.incident <- left_join(censored.incident, P2, by = "ENROLID") # match AEDs to main-comorbidities
+glimpse(censored.incident)
+censored.incident <- censored.incident[complete.cases(censored.incident),]
+
+#
+x <- dcast(censored.incident, ENROLID + time + status ~ SUBSTANCENAME, value.var = "hasAED", fill = F)
+x2 <- x
+setDT(x2)
+x2 <- x2 %>% rename(mc = status)
+x2[mc != "censored",status := 1]
+x2[mc == "censored",status := 0]
+x3 <- gather(x2, AED, AED_yes_no, -ENROLID, -mc, -time, -status)
+
+
+# logrank-test pvalues
+#######################
+aeds <- unique(x3$AED)
+mc <- setdiff(unique(x3$mc),"censored")
+
+logrank1 <- function(m, a) {
+  sdf <- survdiff(formula = Surv(time = time, event = status) ~ AED_yes_no, data = x3 %>% filter(mc %in% c("censored",m), AED == a))
+  p.val <- 1 - pchisq(sdf$chisq, length(sdf$n) - 1)
+  return(p.val)
+}
+
+logrank.test1 <- sapply(mc, function(m) sapply(aeds, function(a) try(logrank1(m,a), silent = T) ))
+write.csv2(logrank.test1, file = "~/epilepsie_preprocessing_descrStat/descr_stat/survival_aed_logrank.csv")
+
+
+# fdr
+#####
+pvals <- c(logrank.test1)
+fdr <- (p.adjust(pvals, method = "BY"))
+fdr <- t(matrix(fdr, nrow = ncol(logrank.test1), byrow = T))
+logrank.test1.fdr <- logrank.test1
+for(i in 1:nrow(fdr)) {
+  for(j in 1:ncol(fdr)) {
+    logrank.test1.fdr[i,j] <- fdr[i,j]
+  }
+}
+write.csv2(logrank.test1.fdr, file = "~/epilepsie_preprocessing_descrStat/descr_stat/survival_aed_logrank.fdr.csv")
+
+# logrank-test numbers
+######################
+logrank2 <- function(m, a) {
+  sdf <- survdiff(formula = Surv(time = time, event = status) ~ AED_yes_no, data = x3 %>% filter(mc %in% c("censored",m), AED == a))
+  # p.val <- 1 - pchisq(sdf$chisq, length(sdf$n) - 1)
+  return(sdf)
+}
+
+logrank.test2 <- sapply(mc, function(m) sapply(aeds, function(a) try(logrank2(m,a), silent = T) ))
+
+bindN <- function(sdf_element) {
+  aed_yes <- as.character(sdf_element[[1]]$n)[1]
+  aed_no <- as.character(sdf_element[[1]]$n)[2]
+  x <- paste("AED no:yes = ",aed_yes,":",aed_no, sep ="")
+  return(x)
+}
+
+for(i in 1:nrow(logrank.test2)) {
+  for(j in 1:ncol(logrank.test2)) {
+    try(logrank.test2[i,j] <- bindN(logrank.test2[i,j]), silent = T)
+  }
+}
+
+rnames <- row.names(logrank.test2)
+logrank.test2 <- apply(logrank.test2, 2, as.character)
+row.names(logrank.test2) <- rnames
+write.csv2(logrank.test2, file = "~/epilepsie_preprocessing_descrStat/descr_stat/logrank.test2.csv")
+
+```
+
+
+# ggsurvplot multiplot
+```{r, fig.height=20, fig.width=20}
+library(survminer)
+library(gridExtra)
+head(x3)
+x4 <- copy(x3)
+setDT(x4)
+# x4$AED_yes_no <- as.character(x4$AED_yes_no)
+# x4[AED_yes_no ==1, AED_yes_no := "yes"]
+# x4[AED_yes_no ==0, AED_yes_no := "no"]
+# mySurv <- function(x) { survfit(Surv(time, status) ~ AED_yes_no,data = x) }
+mySurv <- function(x) { survfit(Surv(time, status) ~ AED_yes_no,data = x) }
+
+# sapply(mc, function(m) sapply(aeds, function(a) ggsurvplot(mySurv(x4 %>% filter(mc == m | mc == "censored", AED == a)),risk.table = T ) ))
+for(a in aeds) {
+  cat("--- ",a,"\n")
+  plot.surv <- list()
+  plot.haz <- list()
+  n <- 1
+  for (m in mc) {
+    cat(m,"\n")
+    d <- x4 %>% filter(mc == m, AED == a, status == 1)
+    plot.survival <- ggsurvplot(fit = mySurv(d), data = d, risk.table = T, pval = T, conf.int = T, 
+                                main = paste("AED = ",a, "\nMC = ",m, sep = ""), break.x.by = 365 )
+    
+    plot.cumhaz <- ggsurvplot(fit = mySurv(d), data = d, risk.table = T, pval = T, conf.int = T, 
+                              main = paste("AED = ",a, "\nMC = ",m, sep = ""), break.x.by = 365,fun = "cumhaz" )
+    plot.surv[[n]] <- plot.survival
+    plot.haz[[n]] <- plot.cumhaz
+    n <- n+1
+  }
+  arrange_ggsurvplots(x = plot.surv, nrow=3, ncol=3, print = TRUE)
+  arrange_ggsurvplots(x = plot.haz, nrow=3, ncol=3, print = TRUE)
+}
+
+```
+
+
+
+# grouped plots
+```{r, fig.height=10, fig.width=10}
+
+# "merge" censored with main-comorbidity for facet plot
+x5 <- copy(x4)
+censored <- x5 %>% filter(mc == "censored")
+x5 <- x5 %>% filter(mc != "censored")
+for(m in mc) {
+  dummy <- censored
+  dummy$mc <- m
+  x5 <- rbind(x5, dummy)
+}
+
+mySurv.facet <- function(x) { survfit(Surv(time, status) ~ AED_yes_no + mc, data = x)}
+
+for(a in aeds) {
+  data <- x5 %>% filter(AED == a)
+  gg <- ggsurvplot(fit = mySurv.facet(data), data = data, conf.int = T, risk.table = T, pval = T)
+  
+  gg <- gg$data.survplot
+  p <- ggplot(gg, aes(time, surv, color = AED_yes_no)) + geom_line() + 
+  geom_ribbon(aes(ymin = lower, ymax = upper, alpha = 0.1), fill = "grey70") +
+  facet_wrap( ~mc) +   ggtitle(a)
+  print(p)
+  
+}
+
+                                                                                 
+```
+
+# cross-check
+
+Survival curves for Carbamazepine, Phenytoin and Levetiracetam show significant higher survival for each main-comorbidities.
+The question is: Decreases this treatment MC risk?
+And: Is this valid in general, means for less constraint subpopulation?
+
+
+```{r}
+# age 18-65
+# has AED
+# has MC
+
+# set constraints, 
+constr <- vector("list")
+constr$incidendeThreshold <- 180
+constr$AGE.lb = 18
+constr$AGE.ub = 65
+constr$training.lb <- -2*365
+constr$training.ub <- 90
+constr$FU <- 180
+# constr$FU <- 90
+constr$population <- "incident_censored" # options: {incident,incident_censored}
+print(constr)
+
+# create patients-constraints table
+source("~/proj.MH90_FU365/functions/descr.stat.lib.R")
+E.constr <- GetEnrolidConstr(P, constr) # get ENROLID's matching constraints
+
+# reconfigure patients-constraints table: don't drop patients without any aeds
+E.constr$isAED <- TRUE 
+E.constr$AEDtrain <- TRUE
+
+# apply constraints
+P.allTreat <- ApplyConstr(P, E.constr, constr) # apply filters
+P.allTreat <- KeepIncidentAndCensored(P.allTreat, constr) # keep only incident and censored patients
+```
+
+## survival analysis of new, less constraint, cohort
+```{r}
+source("~/epilepsie_preprocessing_descrStat/functions/GetCensoredIncidentSurvivalTime.R")
+censored.incident.all <- GetCensoredIncidentSurvivalTime(P.allTreat)
+censored.incident.all <- as.data.frame(censored.incident.all)
+censored.incident.all$ENROLID <- as.numeric(censored.incident.all$ENROLID)
+
+# patienten im trainingszeitraum, die ein AED erhalten haben
+P2 <-
+  P %>% filter(isAED == TRUE, IXDAYS >= -2 * 365, IXDAYS <= 90,!is.na(SUBSTANCENAME)) %>%
+  select(ENROLID, SUBSTANCENAME) %>% distinct()
+P2 <- as.data.frame(P2)
+P2$ENROLID <- as.numeric(P2$ENROLID)
+P2$hasAED <- 1
+
+# nur patienten, die aeds im trainingszeitraum erhalten haben
+censored.incident.all <- left_join(censored.incident.all, P2, by = "ENROLID") # match AEDs to main-comorbidities
+glimpse(censored.incident.all)
+
+#
+x.all <- dcast(censored.incident.all, ENROLID + time + status ~ SUBSTANCENAME, value.var = "hasAED", fill = F)
+x.all2 <- x.all
+setDT(x.all2)
+x.all2 <- x.all2 %>% rename(mc = status)
+x.all2[mc != "censored",status := 1]
+x.all2[mc == "censored",status := 0]
+x.all3 <- gather(x.all2, AED, AED_yes_no, -ENROLID, -mc, -time, -status)
+```
+# ggsurvplot multiplot
+```{r, fig.height=20, fig.width=20}
+head(x.all3)
+x.all4 <- copy(x.all3)
+setDT(x.all4)
+x.all4$AED_yes_no <- as.character(x.all4$AED_yes_no)
+x.all4[AED_yes_no ==1, AED_yes_no := "yes"]
+x.all4[AED_yes_no ==0, AED_yes_no := "no"]
+
+# sapply(mc, function(m) sapply(aeds, function(a) ggsurvplot(mySurv(x.all4 %>% filter(mc == m | mc == "censored", AED == a)),risk.table = T ) ))
+for(a in aeds) {
+  plot.surv <- list()
+  plot.haz <- list()
+  n <- 1
+  for (m in mc) {
+    d <- x.all4 %>% filter(mc == m| mc == "censored", AED == a)
+    plot.survival <- ggsurvplot(fit = mySurv(d), data = d, risk.table = T, pval = T, conf.int = T, 
+                                main = paste("AED = ",a, "\nMC = ",m, sep = ""), break.x.by = 365 )
+    
+    plot.cumhaz <- ggsurvplot(fit = mySurv(d), data = d, risk.table = T, pval = T, conf.int = T, 
+                              main = paste("AED = ",a, "\nMC = ",m, sep = ""), break.x.by = 365,fun = "cumhaz" )
+    plot.surv[[n]] <- plot.survival
+    plot.haz[[n]] <- plot.cumhaz
+    n <- n+1
+  }
+  arrange_ggsurvplots(x = plot.surv, nrow=3, ncol=3, print = TRUE)
+  arrange_ggsurvplots(x = plot.haz, nrow=3, ncol=3, print = TRUE)
+}
+
+```

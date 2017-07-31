@@ -1,0 +1,91 @@
+---
+title: "feature matrix"
+subtitle: ""
+date: "2017 FEB 27"
+output: html_notebook
+---
+
+
+# load patient / drug / disease features + censored/comorbidity enrolment
+```{r setup}
+
+# load packages
+require(dplyr)
+require(tidyr)
+library(profvis)
+library(data.table)
+library(mRMRe)
+  set.thread.count(10) # allow up to 10 cores for parallelization
+
+# load functions
+source("functions/Lib.featSelAndRF.R")
+
+# drug raw features
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/DRUG.FEATMAT.RData")
+  
+# disease raw features
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/DISEASE.FEATMAT.RData")
+
+# patient features
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/P.feat.template.RData") # contains age, sex, region, status, time
+  setDT(P.feat.template)
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.RData") # contains assigment to censored / main-comorbidity
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/P.QUART.SUBST.RData") # contains treatment by quarter
+  P.QUART.SUBST$SUBSTANCENAME <- make.names(P.QUART.SUBST$SUBSTANCENAME)
+  load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/P.QUART.DIAG.RData") # contains diagnosis by quarter
+  
+    # filter P.* tables by quarters
+    quarters <- c(paste("m",1:9, sep = ""), "1")
+    P.QUART.SUBST <- P.QUART.SUBST %>% filter(QUARTER %in% quarters)
+    P.QUART.DIAG  <- P.QUART.DIAG %>% filter(QUARTER %in% quarters)
+```
+
+
+# assignment to training and test data by main-comorbidity
+```{r set test and training datasets}
+
+# filter populations by main-comorbidity
+unique(censored.incident$status)
+censored       <- censored.incident %>% filter(status == "censored") %>% mutate(status = 0)
+# Anxiety        <- censored.incident %>% filter(status == "Anxiety") %>% mutate(status = 1)
+# Depression     <- censored.incident %>% filter(status == "Depression") %>% mutate(status = 1)
+# Diabetes       <- censored.incident %>% filter(status == "Diabetes") %>% mutate(status = 1)
+# Hyperlipidemia <- censored.incident %>% filter(status == "Hyperlipidemia") %>% mutate(status = 1)
+# Hypertension   <- censored.incident %>% filter(status == "Hypertension") %>% mutate(status = 1)
+Migraine       <- censored.incident %>% filter(status == "Migraine") %>% mutate(status = 1)
+
+# Anxiety.Enrol        <- GetTestTrainAssignment(censored, Anxiety)
+# Depression.Enrol     <- GetTestTrainAssignment(censored, Depression)
+# Diabetes.Enrol       <- GetTestTrainAssignment(censored, Diabetes)
+# Hyperlipidemia.Enrol <- GetTestTrainAssignment(censored, Hyperlipidemia)
+# Hypertension.Enrol   <- GetTestTrainAssignment(censored, Hypertension)
+Migraine.Enrol       <- GetTestTrainAssignment(censored, Migraine)
+```
+
+# feature selection
+```{r pre-filtering feature matrix}
+Migraine.Features <- 
+  GetMCFeatureMatrix(
+    mainComorb.Enrolment = Migraine.Enrol, 
+    rawDrugFeatures =      drug.features, 
+    patQuartTreat =        P.QUART.SUBST, 
+    rawDiseaseFeatures =   DISEASES.FEATMAT, 
+    patQuartDiag =         P.QUART.DIAG, 
+    patFeatures =          P.feat.template
+   )
+
+# mRMR feature selection
+Migraine.Features$mRMR <- featureSelectionMRMR(featureMatrix = Migraine.Features$featureMatrix)
+
+# save
+save.image(file="featureSelectionAndMatrices.Migraine.RData", compress = TRUE)
+```
+
+# survival random forest
+```{r}
+
+# add time status AGE GENDER REGIONC to feature mRMR feature selection
+```
+
+
+

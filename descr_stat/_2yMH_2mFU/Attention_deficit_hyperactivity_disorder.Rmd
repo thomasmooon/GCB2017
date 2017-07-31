@@ -1,0 +1,110 @@
+---
+title: "Attention deficit hyperactivity disorder in children and adult"
+subtitle: ""
+author: "Thomas Gerlach"
+date: "12 OCT 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+
+# load core data and connect to netezza
+```{r start, echo = FALSE}
+source("z_start.R") # initalize netezza DB, load core data
+
+if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
+PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+```
+
+# cover page
+```{r, echo = FALSE}
+title   <- "Attention deficit hyperactivity disorder in children and adult"
+note1   <- ""
+file    <- "Attention_deficit_hyperactivity_disorder.Rmd"
+filters <- "non-negative DAYSUPP"
+
+coverpage(title = title,note1 = note1,file = file,filters = filters)
+
+```
+
+# apply filters
+```{r standardize population, echo=FALSE}
+
+source("functions/n_patient_per_period.R")
+source( "functions/patient_monthly_enrolment.R")
+source("functions/patient_nonNegative_DAYSUPP.R")
+source("functions/setAEDFlag.R")
+source("functions/aggregate_AED_substancenames.R")
+source("functions/add_Phew_PhewHighlevel.R")
+source("functions/disOnt_ICD9_2_MESH.R")
+
+# reset PATIENT_AGE_REGION filters: 0y FU
+PATIENTS_AGE_REGION <- TABLE04SAS7BDAT
+# # re-compute missing IXDAYS for all observations
+newIXDAYS                  <- PATIENTS_AGE_REGION$STARTDT - PATIENTS_AGE_REGION$INDEXDT
+PATIENTS_AGE_REGION$IXDAYS <- as.numeric(newIXDAYS)
+# # Add Age and Regional Information
+PATIENTS_AGE_REGION <- addAgeRegion(PATIENTS_AGE_REGION)
+# # only patients with non-negative DAYSUP
+PATIENTS_AGE_REGION <- patient_nonNegative_DAYSUPP(PATIENTS_AGE_REGION)
+# # set AED flag
+PATIENTS_AGE_REGION <- setAEDFlag(PATIENTS_AGE_REGION)
+# # aggregate AED SUBSTANCENAME's
+PATIENTS_AGE_REGION <- aggregate_AED_substancenames(PATIENTS_AGE_REGION)
+# # Match PHEWAS terms to ICD9 terms
+PATIENTS_AGE_REGION <- add_Phew_PhewHighlevel(PATIENTS_AGE_REGION)
+
+```
+
+```{r, echo = FALSE}
+
+n_child <- PATIENTS_AGE_REGION %>% filter(AGE < 18) %>% select(ENROLID) %>% distinct() %>% tally()
+n_adult <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% select(ENROLID) %>% distinct() %>% tally()
+
+dis <- "Attention deficit hyperactivity disorder"
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(PHEWAS_STRING == dis)
+
+# new occurrence in children / adult
+p_child <- PATIENTS_AGE_REGION %>% filter(AGE < 18) %>% select(ENROLID, IXDAYS) %>% distinct()
+p_adul <- PATIENTS_AGE_REGION %>% filter(AGE >= 18) %>% select(ENROLID, IXDAYS) %>% distinct()
+
+p_child_hist <- p_child %>% filter(IXDAYS <= 0) %>% select(ENROLID) %>% distinct()
+p_child_hist <- cbind(p_child_hist,hist=TRUE)
+p_child_fut <- p_child %>% filter(IXDAYS > 0) %>% select(ENROLID) %>% distinct()
+
+p_adul_hist  <- p_adul %>% filter(IXDAYS <= 0) %>% select(ENROLID) %>% distinct()
+p_adul_hist  <- cbind(p_adul_hist,hist=TRUE)
+p_adul_fut <- p_adul %>% filter(IXDAYS > 0) %>% select(ENROLID) %>% distinct()
+
+p_child_new <- left_join(p_child_fut,p_child_hist,by="ENROLID")
+p_adul_new <- left_join(p_adul_fut,p_adul_hist,by="ENROLID")
+
+p_child_new$hist[is.na(p_child_new$hist)] <- FALSE
+p_adul_new$hist[is.na(p_adul_new$hist)] <- FALSE
+
+
+# new occurrence of ADHD
+n_child_adhd_new <- sum(!p_child_new$hist)
+n_adul_adhd_new  <- sum(!p_adul_new$hist)
+
+# n patients per cohort
+n_child_adhd <- p_child %>% select(ENROLID) %>% distinct() %>%  tally()
+n_adul_adhd <- p_adul %>% select(ENROLID) %>% distinct() %>%  tally()
+
+# results
+res <- 
+  cbind(
+    children=rbind(n_child,n_child_adhd,round(n_child_adhd/n_child,2)*100,n_child_adhd_new,round(n_child_adhd_new/n_child_adhd,2)*100),
+    adult=rbind(n_adult,n_adul_adhd,round(n_adul_adhd/n_adult,2)*100,n_adul_adhd_new,round(n_adul_adhd_new/n_adul_adhd,2)*100)
+    )
+res <- as.data.frame(res)
+colnames(res) <- c("children","adult")
+rownames(res) <- c("total","total ADHD absolut","total ADHD %","new ADHD","new ADHD / total ADHD %")
+
+knitr::kable(res)
+
+```
+

@@ -1,0 +1,88 @@
+---
+title: "disease_Descriptors.Rmd"
+subtitle: ""
+author: "Thomas Gerlach"
+date: "2017 JAN 01"
+output: html_notebook
+---
+
+Wie häufig kommen die Diagnosen vor, die mit HK's assoziiert sind?
+Welche fallen unter die gewählte Häufigkeitsschwelle von unter 2% nach(!) Filterung
+
+
+# setup
+```{r, echo=FALSE, include = FALSE}
+rm(list=setdiff(ls(), "TABLE04SAS7BDAT"))
+knitr::opts_chunk$set(echo = FALSE, fig.width=10, fig.height=7) # markdown
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04SAS7BDAT")) load("./data/TABLE04SAS7BDAT.RData")
+```
+
+## global params
+```{r}
+params <- vector("list")
+params$thres.diag.freq   <- 2
+```
+
+## script specific functions
+```{r}
+
+
+##################
+ParseConcatenatedICD9 <- function(icd9.unparsed) {
+  
+  ICD9GROUPING <- tbl(src,"REFERENCE.ICD9GROUPING") %>% filter(ICD9 != "") %>%   distinct() %>%  collect()
+  ICD9GROUPING <- as_tibble(apply(ICD9GROUPING,2,as.character))
+  ICD9 <- suppressWarnings(as_tibble(cbind(ICD9c = ICD9GROUPING$ICD9, ICD9n = ICD9GROUPING$ICD9 %>% as.character() %>% as.numeric())))
+  ICD9 <- suppressWarnings(data.frame(ICD9c = ICD9GROUPING$ICD9, ICD9n = as.numeric(as.character(ICD9GROUPING$ICD9))))
+  
+  parsed <- c()
+  
+  for(k in 1:length(icd9.unparsed)) { 
+    
+     if(k %% 100 == 0) print(k)
+    #print(k)
+    x1 <- strsplit(icd9.unparsed[k],",") %>% unlist() %>% strsplit("-")
+    x2 <- unlist(lapply(x1,length))
+    
+    # parse and attach non-interval elements
+    x2.nonint <- which(x2==1)
+    if(length(x2.nonint)>0){
+      x2.nonint <- trimws(unlist(x1[x2.nonint]))
+      parsed    <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=x2.nonint,row.names=NULL))
+    }
+    
+    # parse and attach interval-elements (e.g "120-121")
+    x2.interv <- which(x2==2)
+    
+    if(length(x2.interv) >0) {
+      
+      for (l in 1:length(x2.interv)) {
+        x3 <- unlist(x1[[x2.interv[l]]])
+        lb <- as.numeric(x3[1])
+        rb <- as.numeric(x3[2])
+        if(rb == floor(rb)) rb <- rb + 1 - 1e-3
+        x3.ICD9.idx <- which(between(ICD9$ICD9n,lb,rb))
+        parsed      <- rbind(parsed,cbind(icd9.unparsed[k],ICD9=as.character(ICD9$ICD9c[x3.ICD9.idx]),row.names=NULL))
+      }
+    }
+  }
+  colnames(parsed) <- c("unparsed","parsed")
+  return(parsed)
+}
+```
+
+## filter patients
+```{r standardize population, echo=FALSE}
+PATIENTS_AGE_REGION <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT)
+
+# # delete DIAG terms with E or V prefix
+# EV <- grep("E|V",PATIENTS_AGE_REGION$DIAG)
+# PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION[-EV,]
+
+# filter patients: keep only patients with incident MC or which are full-censored (no main-cm at any time)
+PATIENTS_AGE_REGION <- KeepIncidentAndCensored(PATIENTS_AGE_REGION)
+
+# normalize medical history by cutoff
+PATIENTS_AGE_REGION <- PATIENTS_AGE_REGION %>% filter(IXDAYS >= -2*365) %>% distinct()
+```

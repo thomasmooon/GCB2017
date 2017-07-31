@@ -1,0 +1,60 @@
+---
+title: ""
+output: html_notebook
+---
+
+
+
+```{r}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+load("~/epilepsie_preprocessing_descrStat/data/re-do_epd183/all_events.icd9.RData")
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.RData")
+path <- "~/epilepsie_preprocessing_descrStat/MRMR.SRF.fullmodel/data/"
+```
+
+
+```{r}
+censored.incident <- censored.incident %>% filter(status != "censored") %>% select(-time) %>% distinct()
+
+UCB_AED <- c("Levetiracetam","Lacosamide")
+
+patAed <- 
+  all_events.icd9$data %>% 
+  filter(ENROLID %in% censored.incident$ENROLID ) %>% 
+  filter(isAED == TRUE) %>% 
+  filter(!(SUBSTANCENAME %in% UCB_AED)) %>% 
+  select(ENROLID, SUBSTANCENAME) %>% distinct()
+
+```
+
+# How man patients retrieved a particular AED?
+```{r}
+str(censored.incident)
+str(patAed)
+censored.incident$ENROLID <- as.numeric(censored.incident$ENROLID)
+patAed$ENROLID <- as.numeric(patAed$ENROLID)
+censored.incident <- inner_join(censored.incident, patAed)
+
+aedFreq <- censored.incident %>% group_by(SUBSTANCENAME) %>% select(ENROLID) %>% tally() %>% arrange(-n)
+knitr::kable(aedFreq)
+
+write.table(aedFreq, file = paste(path,"aedFreq",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+ggplot(aedFreq, aes(x = reorder(SUBSTANCENAME,n), y = n)) + geom_bar(stat = "identity") + coord_flip() + theme_linedraw()
+```
+
+
+# How man patients retrieved a particular AED, by main-comorbidity?
+```{r, fig.height=10, fig.width=10}
+aedFreqMC1 <- censored.incident %>% group_by(SUBSTANCENAME, status) %>% select(ENROLID) %>% tally() %>% arrange(-n)
+head(aedFreqMC)
+aedFreqMC2 <- spread(aedFreqMC1, status, n, fill = 0)
+aedFreqMC2 <- aedFreqMC2[order(match(aedFreqMC2$SUBSTANCENAME,aedFreq$SUBSTANCENAME)),]
+write.table(aedFreqMC2, file = paste(path,"aedFreqMC",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+ggplot(aedFreqMC1, aes(x = reorder(SUBSTANCENAME,n), y = n)) + geom_bar(stat = "identity") + coord_flip() + theme_linedraw() + facet_wrap(~status)
+
+```
+

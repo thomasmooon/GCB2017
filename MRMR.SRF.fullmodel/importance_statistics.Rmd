@@ -1,0 +1,570 @@
+---
+title: "importance sampling (scaled importance) "
+subtitle: "mrmr (5000) + srf (4000 trees, scaled permutation importance)"
+output: html_notebook
+---
+
+
+```{r}
+library(ranger)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+path <- "~/epilepsie_preprocessing_descrStat/MRMR.SRF.fullmodel/data/"
+files <- dir(path, pattern = "RData")
+workspacenames <- strsplit(files, "\\.") %>% lapply(function(x) x[1]) %>% unlist() 
+source <- paste(path,files,sep="")
+for(i in seq_len(length(files))) {load(source[i]); assign(workspacenames[i],results$ranger.forest); rm(results)}
+```
+
+# functions
+```{r}
+getDomain <- function(x) sapply(x,function(k) strsplit(k,"\\.x\\.") %>% lapply(function(s) s[1]) %>% unlist() )
+
+getSubDomain <-  function(x) {
+  q <- c("1",paste("m",1:8,sep=""))
+  subdomain <- sapply(x, function(k) strsplit(k, "\\.x\\.") %>% lapply(function(s) s[2]) %>% unlist())
+  subdomain[subdomain %in% q] <- NA
+  return(subdomain)
+  }
+getQuarter <-  function(x) {
+  q <- c("1",paste("m",1:8,sep=""))
+  qq <- sapply(x, function(k)  strsplit(k, "\\.x\\.") %>% lapply(function(s)  s[length(s)]) %>% unlist())
+  qq[!(qq %in% q)] <- NA
+  return(qq)
+}
+getAEDfromSubdomain <- function(d) {
+  id <- d$domain == "QUARTQTY"
+  new.subdomain <- sapply(d$subdomain[id], function(x) strsplit(x,"_")) %>% lapply(function(x) x[1]) %>% unlist()
+  d$subdomain[id] <- new.subdomain
+  return(d)
+}
+
+# wrapper
+getDomainTotal <- function(df,colname) {
+  df$domain <- getDomain(df[,colname]) %>% as.character()
+  df$subdomain <- getSubDomain(df[colname]) %>% as.character()
+  df$domain.q <- getQuarter(df[colname]) %>% as.character()
+  df <- getAEDfromSubdomain(df)
+  return(df)
+}
+
+###
+
+getImportance <- function(rangerobject) {
+  imp <- data.frame(importance(rangerobject))
+  colnames(imp) <- "importance"
+  imp$features <- row.names(imp)
+  row.names(imp) <- NULL
+  imp <- imp %>% filter(importance >0) # drop negative importancy values
+  return(imp)
+}
+
+###
+
+# features subdomains of special interest
+
+
+###
+
+getDomainEnrich <- function(df, all_features) {
+  # mean() and sd() importance per domain
+  domainEnr <-
+  df %>% group_by(domain) %>% summarise(
+  N = length(importance),
+  imp.sum = sum(importance)
+  ) %>% ungroup() %>% arrange(-imp.sum)
+  
+  # retrieve domains with only 1 feature from all_features to overwrite domainEnr$N with 1
+  # to correct for preceded dummy coding
+  domainFreqTotal <- all_features %>% group_by(domain) %>% tally() 
+  correctTo1 <- domainFreqTotal %>% filter(n==1)
+  domainEnr$N[domainEnr$domain %in% correctTo1$domain] <- 1
+  
+  # attach domainFreqTotal for hypergeom. test
+  domainEnr <- domainEnr %>% left_join(domainFreqTotal)
+  
+  # enrichment test
+  domainEnr <- domainEnr %>% rename(nDrawn = N, nTotal = n)
+  nFeatTotal <- sum(domainFreqTotal$n)
+  nFeatMRMR <- 500
+  
+  ## enrichment pvalue
+  for(i in seq_len(nrow(domainEnr))) {
+    nFeatDomainDrawn <- domainEnr$nDrawn[i]
+    nFeatDomainAll <- domainEnr$nTotal[i]
+    domainEnr$pval[i] <- 1-phyper(nFeatDomainDrawn, nFeatDomainAll, nFeatTotal-nFeatDomainAll, nFeatMRMR)
+  }
+
+  
+  return(domainEnr %>% arrange(-imp.sum) )
+}
+
+###
+
+
+getSubdomainEnrich <- function(df, all_features, top10=T) {
+  
+  # top 10 domains by imp.sum
+  top10domains <- getDomainEnrich(df, all_features) %>% top_n(10,imp.sum)
+  importantDomains <- unique(c(top10domains$domain, "QUARTQTY")) # provide AED details always
+  
+  # mean() and sd() importance per subdomain
+  subdomainEnr <-
+    df %>% filter(domain %in% importantDomains) %>%
+    group_by(domain,subdomain) %>%  
+    summarise(
+      N = length(importance),
+      imp.sum = sum(importance)
+    ) %>% ungroup() %>% arrange(-imp.sum) 
+  
+  # retrieve subdomains with only 1 feature from all_features to overwrite subdomainEnr$N with 1
+  # to correct for preceded dummy coding
+  subdomainFreqTotal <-
+    all_features %>% filter(domain %in% importantDomains) %>% group_by(subdomain) %>% tally() 
+  correctTo1 <- subdomainFreqTotal %>% filter(n==1)
+  subdomainEnr$N[subdomainEnr$subdomain %in% correctTo1$subdomain] <- 1
+  
+  # attach subdomainFreqTotal for hypergeom. test 
+  subdomainEnr <- subdomainEnr %>% left_join(subdomainFreqTotal)
+  
+  # enrichment test
+  subdomainEnr <- subdomainEnr %>% rename(nDrawn = N, nTotal = n)
+  nFeatTotal <- sum(subdomainFreqTotal$n)
+  nFeatMRMR <- 500
+  
+  ## enrichment pvalue
+  for(i in seq_len(nrow(subdomainEnr))) {
+    nFeatsubdomainDrawn <- subdomainEnr$nDrawn[i]
+    nFeatsubdomainAll <- subdomainEnr$nTotal[i]
+    subdomainEnr$pval[i] <- 1-phyper(nFeatsubdomainDrawn, nFeatsubdomainAll, nFeatTotal-nFeatsubdomainAll, nFeatMRMR)
+  }
+  
+  # drop UCB AED's
+  UCB_AED <- c("Levetiracetam","Lacosamide")
+  subdomainEnr <- subdomainEnr %>% filter(!(subdomain %in% UCB_AED))
+  
+  ifelse(top10, 
+     return(subdomainEnr %>% arrange(domain, -imp.sum) %>% group_by(domain) %>% top_n(10, imp.sum) %>% ungroup()), 
+     return(subdomainEnr %>% arrange(domain, -imp.sum))
+  )
+}
+
+###
+```
+
+
+# how man features have had a positive importance, by main-comorbidity?
+```{r}
+mc <- c("Anxiety","Bipolar","Depression","Diabetes","Hyperlipidemia","Hypertension","Migraine","Overweight","Stroke")
+x <- sapply(mc, function(x) sum(get(x)$variable.importance >0) )
+positiveImportance <- data.frame(fc = names(x), numPositiveImportance = as.numeric(x))
+write.table(positiveImportance, file = paste(path,"positiveImportanceCountByMC",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+```
+
+
+# all features: domain + subdomain frequencies
+```{r}
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/FM.all.featurenames.RData")
+all_features <- getDomainTotal(all_features,"all_features")
+
+```
+
+```{r}
+Anxiety.imp <- getDomainTotal(getImportance(Anxiety), "features")
+Anxiety.domain <- getDomainEnrich(Anxiety.imp, all_features)
+Anxiety.subdomain <- getSubdomainEnrich(Anxiety.imp, all_features, top10=T)
+write.table(Anxiety.domain, file = paste(path,"Anxiety.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Anxiety.subdomain, file = paste(path,"Anxiety.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+Bipolar.imp <- getDomainTotal(getImportance(Bipolar), "features")
+Bipolar.domain <- getDomainEnrich(Bipolar.imp, all_features)
+Bipolar.subdomain <- getSubdomainEnrich(Bipolar.imp, all_features, top10=T)
+write.table(Bipolar.domain, file = paste(path,"Bipolar.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Bipolar.subdomain, file = paste(path,"Bipolar.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+Depression.imp <- getDomainTotal(getImportance(Depression), "features")
+Depression.domain <- getDomainEnrich(Depression.imp, all_features)
+Depression.subdomain <- getSubdomainEnrich(Depression.imp, all_features, top10=T)
+write.table(Depression.domain, file = paste(path,"Depression.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Depression.subdomain, file = paste(path,"Depression.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+Diabetes.imp <- getDomainTotal(getImportance(Diabetes), "features")
+Diabetes.domain <- getDomainEnrich(Diabetes.imp, all_features)
+Diabetes.subdomain <- getSubdomainEnrich(Diabetes.imp, all_features, top10=T)
+write.table(Diabetes.domain, file = paste(path,"Diabetes.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Diabetes.subdomain, file = paste(path,"Diabetes.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+Hyperlipidemia.imp <- getDomainTotal(getImportance(Hyperlipidemia), "features")
+Hyperlipidemia.domain <- getDomainEnrich(Hyperlipidemia.imp, all_features)
+Hyperlipidemia.subdomain <- getSubdomainEnrich(Hyperlipidemia.imp, all_features, top10=T)
+write.table(Hyperlipidemia.domain, file = paste(path,"Hyperlipidemia.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Hyperlipidemia.subdomain, file = paste(path,"Hyperlipidemia.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+Hypertension.imp <- getDomainTotal(getImportance(Hypertension), "features")
+Hypertension.domain <- getDomainEnrich(Hypertension.imp, all_features)
+Hypertension.subdomain <- getSubdomainEnrich(Hypertension.imp, all_features, top10=T)
+write.table(Hypertension.domain, file = paste(path,"Hypertension.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Hypertension.subdomain, file = paste(path,"Hypertension.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+Migraine.imp <- getDomainTotal(getImportance(Migraine), "features")
+Migraine.domain <- getDomainEnrich(Migraine.imp, all_features)
+Migraine.subdomain <- getSubdomainEnrich(Migraine.imp, all_features, top10=T)
+write.table(Migraine.domain, file = paste(path,"Migraine.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Migraine.subdomain, file = paste(path,"Migraine.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+Overweight.imp <- getDomainTotal(getImportance(Overweight), "features")
+Overweight.domain <- getDomainEnrich(Overweight.imp, all_features)
+Overweight.subdomain <- getSubdomainEnrich(Overweight.imp, all_features, top10=T)
+write.table(Overweight.domain, file = paste(path,"Overweight.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Overweight.subdomain, file = paste(path,"Overweight.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+Stroke.imp <- getDomainTotal(getImportance(Stroke), "features")
+Stroke.domain <- getDomainEnrich(Stroke.imp, all_features)
+Stroke.subdomain <- getSubdomainEnrich(Stroke.imp, all_features, top10=T)
+write.table(Stroke.domain, file = paste(path,"Stroke.domain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(Stroke.subdomain, file = paste(path,"Stroke.subdomain",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+```
+
+# top 10 features by main-comorbidity
+```{r}
+getTop10byMC <-
+  function(x, mc) {
+    df <- x %>% top_n(10, importance) %>% rename(time = domain.q)
+    domain.type <- df$domain %>% strsplit(split = "\\.") %>% lapply(function(x) x[1]) %>% unlist() %>% as.character()
+    df <- data.frame(fc = mc, domain.type = domain.type, df, stringsAsFactors = F)
+    df <- df[,c("fc", "domain.type", "domain", "subdomain", "time", "importance")]
+    df <- df %>% arrange(fc,-importance)
+    
+    df$subdomain[df$subdomain == "C562386"] <- "ESSENTIAL HYPERTENSION"
+    df$domain.type[df$domain == "DRUG2SIDEEFFECTxFREQ"] <- "DRUG"
+    df$domain.type[df$domain == "AGE"] <- "GENERAL"
+    
+    return(df)
+    }
+
+top10byMC <- rbind(
+  getTop10byMC(Anxiety.imp,"Anxiety"),
+  getTop10byMC(Bipolar.imp, "Bipolar, Schizophrenia"),
+  getTop10byMC(Depression.imp, "Depression"),
+  getTop10byMC(Diabetes.imp, "Diabetes"),
+  getTop10byMC(Hyperlipidemia.imp, "Hyperlipidemia"),
+  getTop10byMC(Hypertension.imp, "Hypertension"),
+  getTop10byMC(Migraine.imp, "Migraine"),
+  getTop10byMC(Overweight.imp, "Overweight"),
+  getTop10byMC(Stroke.imp, "Stroke, Ischemic Attack")
+)
+
+write.table(top10byMC, file = paste(path,"top10byMC",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+# more aggregation for table below, values substituted with an "x"
+top10byMC.x <-
+  aggregate( importance ~.,
+  data = top10byMC %>% select(-time),
+  FUN = sum) %>% mutate(importance = "x")
+
+top10byMC.x <- tidyr::spread(top10byMC.x, key = fc, value = importance, fill = "")
+write.table(top10byMC.x, file = paste(path,"top10byMC.aggregated.x",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+# more aggregation for table below, values substituted with an "x (value)"
+top10byMC.a <-
+  aggregate( importance ~.,
+             data = top10byMC %>% select(-time),
+             FUN = sum) %>% mutate(importance = paste("x ","(",importance = round(importance,0),")",sep=""))
+
+top10byMC.a <- tidyr::spread(top10byMC.a, key = fc, value = importance, fill = "")
+write.table(top10byMC.a, file = paste(path,"top10byMC.aggregated.a",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+```
+
+# count occurrence of top10 features in each CV-sample
+```{r}
+top10byMC.CVcount <-  aggregate( importance ~., data = top10byMC %>% select(-time), FUN = sum) %>% mutate(importance = "x")
+
+load("~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/importance_4000/survRF_summary.RData")
+
+it1 <- names(survRF)
+it2 <- 1:6
+cv.feat <- sapply(it1, function(x) sapply(it2, function(y) colnames(survRF[[x]]$training[[y]]$fm) ))
+lapply(cv.feat,length)
+library(tidyr)
+# transform to matrix
+overw <- rbind(
+  data.frame(mc="Overweight", cv="X1", feature=cv.feat$Overweight[[1]]),
+  data.frame(mc="Overweight", cv="X2", feature=cv.feat$Overweight[[2]]),
+  data.frame(mc="Overweight", cv="X3", feature=cv.feat$Overweight[[3]]),
+  data.frame(mc="Overweight", cv="X4", feature=cv.feat$Overweight[[4]]),
+  data.frame(mc="Overweight", cv="X5", feature=cv.feat$Overweight[[5]]),
+  data.frame(mc="Overweight", cv="X6", feature=cv.feat$Overweight[[6]])
+  )
+
+cv.feat <- rbind(
+  data.frame(mc="Anxiety",gather(data.frame(cv.feat$Anxiety), cv, feature)),
+  data.frame(mc="Bipolar, Schizophrenia", gather(data.frame(cv.feat$Bipolar.Schizophrenia), cv, feature)),
+  data.frame(mc="Depression",gather(data.frame(cv.feat$Depression), cv, feature)),
+  data.frame(mc="Diabetes", gather(data.frame(cv.feat$Diabetes), cv, feature)),
+  data.frame(mc="Hyperlipidemia",gather(data.frame(cv.feat$Hyperlipidemia), cv, feature)),
+  data.frame(mc="Hypertension",gather(data.frame(cv.feat$Hypertension), cv, feature)),
+  data.frame(mc="Migraine",gather(data.frame(cv.feat$Migraine), cv, feature)),
+  data.frame(mc="Stroke, Ischemic Attack",gather(data.frame(cv.feat$Stroke.IschemAttack), cv, feature))
+)
+
+cv.feat <- rbind(overw,cv.feat)
+cv.feat <- cv.feat %>% filter(!(feature %in% c("time","status")) )
+cv.feat <- data.frame(apply(cv.feat, 2, as.character),stringsAsFactors = F)
+cv.feat$domain <- getDomain(cv.feat$feature)
+cv.feat$subdomain <- getSubDomain(cv.feat$feature)
+cv.feat$subdomain[cv.feat$subdomain == "C562386"] <- "ESSENTIAL HYPERTENSION"
+cv.feat$feature <- NULL
+cv.feat$match <- paste(cv.feat$mc, cv.feat$domain, cv.feat$subdomain)
+cv.feat <- unique(cv.feat)
+
+top10byMC.CVcount$match <- paste(top10byMC.CVcount$fc, top10byMC.CVcount$domain, top10byMC.CVcount$subdomain)
+
+cv.feat <- cv.feat %>% filter(match %in% top10byMC.CVcount$match)
+cv.feat.count <- cv.feat %>% group_by(mc,match) %>% tally() # count
+x <- left_join(top10byMC.CVcount, cv.feat.count %>% select(-mc)) # join counts to template
+x$n[is.na(x$n)] <- 0 # substitute NA's with zero
+x$val <- paste(x$importance," (",x$n,")",sep="") # create new value column
+top10WithCVCount <- tidyr::spread(x %>% select(domain.type,domain,subdomain,val,fc), key = fc, value = val, fill = "")
+write.table(top10WithCVCount, file = paste(path,"top10WithCVCount",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+```
+
+
+# FDR
+```{r}
+# domain
+allDomains <- rbind(
+  data.frame(focusedComorbidity = "Anxiety", Anxiety.domain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Bipolar", Bipolar.domain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Depression", Depression.domain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Diabetes", Diabetes.domain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Hyperlipidemia", Hyperlipidemia.domain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Hypertension", Hypertension.domain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Migraine", Migraine.domain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Overweight", Overweight.domain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Stroke", Stroke.domain, stringsAsFactors = F)
+)
+
+# subdomain
+allsubdomains <- rbind(
+  data.frame(focusedComorbidity = "Anxiety", Anxiety.subdomain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Bipolar", Bipolar.subdomain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Depression", Depression.subdomain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Diabetes", Diabetes.subdomain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Hyperlipidemia", Hyperlipidemia.subdomain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Hypertension", Hypertension.subdomain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Migraine", Migraine.subdomain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Overweight", Overweight.subdomain, stringsAsFactors = F),
+  data.frame(focusedComorbidity = "Stroke", Stroke.subdomain, stringsAsFactors = F)
+)
+
+# FDR
+allDomains$fdr <- p.adjust(allDomains$pval, method = "BY")
+allsubdomains$fdr <- p.adjust(allsubdomains$pval, method = "BY")
+
+# nicer names
+oldnames <- c("DRUG.THRCLDS","DRUG.THRGRDS","QUARTQTY","PLANTYPC","HLTHPLNC","DRUG.PATHWAY","DRUG.PHEWAS",
+"DRUG.PHEWAS_HL","REGIONC","SEXC","DRUG2SIDEEFFECTxFREQ")
+newnames <- c("therapeutic class", "therapeutic group", "AED","insurance, plantype","insurance, healthplan",
+"drug pathway","indication PHEWAS","indication PHEWAS HL","region","gender","drug sideeffects")
+naming <- data.frame(oldnames,newnames,  stringsAsFactors = F)
+
+allDomains <- left_join(allDomains, naming, by = c("domain" = "oldnames")) 
+idx <- !is.na(allDomains$newnames)
+allDomains$domain[idx] <- allDomains$newnames[idx] 
+allDomains <- allDomains %>% select(-newnames) %>% arrange(focusedComorbidity, pval)
+
+allsubdomains <- left_join(allsubdomains, naming, by = c("domain" = "oldnames")) 
+idx <- !is.na(allsubdomains$newnames)
+allsubdomains$domain[idx] <- allsubdomains$newnames[idx] 
+allsubdomains <- allsubdomains  %>% select(-newnames) %>% arrange(focusedComorbidity, pval)
+
+write.table(allDomains, file = paste(path,"allDomainsFDR",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+write.table(allsubdomains, file = paste(path,"allsubdomainsFDR",".csv",sep=""), dec = ".", row.names = F, sep = ";")
+
+```
+
+# over- / underrepresentation of quarters
+```{r}
+# quarter frequency total
+q <- c("1",paste("m",1:9,sep=""))
+
+table(all_features$domain.q)
+mc <- c("Anxiety","Bipolar","Depression","Diabetes","Hyperlipidemia","Hypertension","Migraine","Overweight","Stroke")
+varnames <- paste(mc,".imp",sep="")
+varnames <- c("all_features",varnames)
+quarterFreq <- sapply(varnames, function(x) table(get(x)$domain.q) )
+
+#
+hyperGTest <- function(whiteDrawn, whiteTotal) {
+  nFeatTotal <- dim(all_features)[1]-1
+  nFeatMRMR <- 500
+  pval <- 1-phyper(whiteDrawn, whiteTotal, nFeatTotal-whiteTotal, nFeatMRMR)
+  return(pval)
+}
+
+quarterFreqP <- apply(quarterFreq, 1, function(x) mapply(hyperGTest, whiteDrawn = x[2:length(x)], MoreArgs = list(whiteTotal = x[1]))) %>% t()
+
+# fdr
+quarterFreqP <- data.frame(quarter=row.names(quarterFreqP),quarterFreqP)
+quarterFreqP2 <- gather(data.frame(quarterFreqP), focused_comorb, pValue, -quarter)
+quarterFreqP2$fdr <- p.adjust(quarterFreqP2$pValue, method = "BY")
+quarterFreqFDR <- spread(quarterFreqP2 %>% select(-pValue), key = focused_comorb, value = fdr )
+
+# export
+write.table(quarterFreq, file = paste(path,"quarterFreq",".csv",sep=""), dec = ".", row.names = T, sep = ";")
+write.table(quarterFreqP, file = paste(path,"quarterFreqP",".csv",sep=""), dec = ".", row.names = T, sep = ";")
+write.table(quarterFreqFDR, file = paste(path,"quarterFreqFDR",".csv",sep=""), dec = ".", row.names = T, sep = ";")
+
+
+```
+
+
+
+# survival + CHF curves, by AED
+
+# define wrapper
+```{r}
+Plot.SurvChf.byMc <- function(FM, censored.incident, AED_name) {
+  
+  AEDCols <- grep(pattern = paste("QUARTQTY\\.x\\.",AED_name, sep=""), ignore.case = T, x = colnames(FM$featureMatrix))
+  enrolCol <- grep(pattern = "enrolid", ignore.case = T, x = colnames(FM$featureMatrix))
+  FM <- FM$featureMatrix[,c(enrolCol,AEDCols)]
+  hasAED <- apply(FM[,-1], 1, function(x) sum(x) > 0)
+  FM <- data.frame(FM$ENROLID, hasAED)
+  censored.incident.AED <- inner_join(censored.incident, FM, by = c("ENROLID" = "FM.ENROLID"))
+  nPat <- length(hasAED)
+  nHasAED <- sum(hasAED)
+  nNoAED <- nPat-nHasAED
+  
+  
+  #################
+  #  survival #
+  #################
+  getAEDSurvivalComparsion <-
+    function(rfObject, mc) {
+      combined <- cbind(censored.incident.AED %>% filter(status %in% c("censored", mc)), rfObject$survival) %>% filter(status %in% mc)
+      combined <- combined %>% select(-ENROLID, -time, -status) 
+      byHasAED <- aggregate(. ~ hasAED, data = combined, FUN = mean)
+      byHasAED <- gather(data = byHasAED, key = time, surv, -hasAED) %>% spread(key = hasAED, value = surv) 
+      byHasAED$time <- as.numeric(byHasAED$time)
+      byHasAED <- byHasAED %>% arrange(time)
+      byHasAED$time <- rfObject$forest$unique.death.times
+      byHasAED <- byHasAED %>% gather(hasAED, value = surv, -time)
+      return(byHasAED)
+    }
+  
+  Anxiety.AED.survival <- getAEDSurvivalComparsion(Anxiety, "Anxiety")
+  Bipolar.AED.survival <- getAEDSurvivalComparsion(Bipolar, "Bipolar.Schizophrenia")
+  Depression.AED.survival <- getAEDSurvivalComparsion(Depression, "Depression")
+  Diabetes.AED.survival <- getAEDSurvivalComparsion(Diabetes, "Diabetes")
+  Hyperlipidemia.AED.survival <- getAEDSurvivalComparsion(Hyperlipidemia, "Hyperlipidemia")
+  Hypertension.AED.survival <- getAEDSurvivalComparsion(Hypertension, "Hypertension")
+  Migraine.AED.survival <- getAEDSurvivalComparsion(Migraine, "Migraine")
+  Overweight.AED.survival <- getAEDSurvivalComparsion(Overweight, "Overweight")
+  Stroke.AED.survival <- getAEDSurvivalComparsion(Stroke, "Stroke.IschemAttack")
+  
+  AED.survival.all <- rbind(
+    data.frame(mc="Anxiety", Anxiety.AED.survival),
+    data.frame(mc="Bipolar, Schizophrenia",Bipolar.AED.survival),
+    data.frame(mc="Depression",Depression.AED.survival),
+    data.frame(mc="Diabetes",Diabetes.AED.survival),
+    data.frame(mc="Hyperlipidemia",Hyperlipidemia.AED.survival),
+    data.frame(mc="Hypertension",Hypertension.AED.survival),
+    data.frame(mc="Migraine",Migraine.AED.survival),
+    data.frame(mc="Overweight",Overweight.AED.survival),
+    data.frame(mc="Stroke, Ischemic Attack",Stroke.AED.survival)
+  )
+  
+  p1 <- 
+    ggplot(data = AED.survival.all, aes(x = time, y = surv, colour = hasAED)) + 
+    geom_line(aes(group = hasAED)) + 
+    geom_point() + 
+    facet_wrap(~mc) +
+    ggtitle(paste(AED_name,", nPat = ", nPat, ", nAED : nNoAED =", nHasAED," : ",nNoAED, sep = ""))
+  plot(p1)
+  
+  ###########
+  # chf     #
+  ###########
+  getAEDChfComparsion <-
+    function(rfObject, mc) {
+      combined <- cbind(censored.incident.AED %>% filter(status %in% c("censored", mc)), rfObject$chf) %>% filter(status %in% mc)
+      combined <- combined %>% select(-ENROLID, -time, -status) 
+      byHasAED <- aggregate(. ~ hasAED, data = combined, FUN = mean)
+      byHasAED <- gather(data = byHasAED, key = time, surv, -hasAED) %>% spread(key = hasAED, value = surv) 
+      byHasAED$time <- as.numeric(byHasAED$time)
+      byHasAED <- byHasAED %>% arrange(time)
+      byHasAED$time <- rfObject$forest$unique.death.times
+      byHasAED <- byHasAED %>% gather(hasAED, value = surv, -time)
+      return(byHasAED)
+    }
+  
+  Anxiety.AED.Chf <- getAEDChfComparsion(Anxiety, "Anxiety")
+  Bipolar.AED.Chf <- getAEDChfComparsion(Bipolar, "Bipolar.Schizophrenia")
+  Depression.AED.Chf <- getAEDChfComparsion(Depression, "Depression")
+  Diabetes.AED.Chf <- getAEDChfComparsion(Diabetes, "Diabetes")
+  Hyperlipidemia.AED.Chf <- getAEDChfComparsion(Hyperlipidemia, "Hyperlipidemia")
+  Hypertension.AED.Chf <- getAEDChfComparsion(Hypertension, "Hypertension")
+  Migraine.AED.Chf <- getAEDChfComparsion(Migraine, "Migraine")
+  Overweight.AED.Chf <- getAEDChfComparsion(Overweight, "Overweight")
+  Stroke.AED.Chf <- getAEDChfComparsion(Stroke, "Stroke.IschemAttack")
+  
+  # plot
+  AED.Chf.all <- rbind(
+    data.frame(mc="Anxiety", Anxiety.AED.Chf),
+    data.frame(mc="Bipolar, Schizophrenia",Bipolar.AED.Chf),
+    data.frame(mc="Depression",Depression.AED.Chf),
+    data.frame(mc="Diabetes",Diabetes.AED.Chf),
+    data.frame(mc="Hyperlipidemia",Hyperlipidemia.AED.Chf),
+    data.frame(mc="Hypertension",Hypertension.AED.Chf),
+    data.frame(mc="Migraine",Migraine.AED.Chf),
+    data.frame(mc="Overweight",Overweight.AED.Chf),
+    data.frame(mc="Stroke, Ischemic Attack",Stroke.AED.Chf)
+  )
+  
+  AED.Chf.all$mc <- as.character(AED.Chf.all$mc)
+  AED.Chf.all$hasAED <- as.logical(AED.Chf.all$hasAED)
+  
+  p2 <- 
+    ggplot(data = AED.Chf.all, aes(x = time, y = surv, colour = hasAED)) + 
+    ylab("cumulative hazard function") +
+    geom_line(aes(group = hasAED)) + 
+    geom_point() + 
+    facet_wrap(~mc) + 
+    theme(panel.grid.major = element_line(colour = "grey50"))  +
+    ggtitle(paste(AED_name,", nPat = ", nPat, ", nHasAED : nNoAED ", nHasAED,":",nNoAED, sep = ""))
+  plot(p2)
+  return(NULL)
+}
+```
+
+
+##
+```{r}
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/FM.all.RData") # full feature matrix (all features, all patients)
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.RData")
+
+
+aeds <- unique(grep(pattern = "quartqty", ignore.case = T, x = colnames(FM$featureMatrix), value = T))
+aeds <- lapply(aeds, function(x) strsplit(x, "\\.x\\."))
+aeds <- lapply(aeds, function(x) x[[1]][2]) %>% unlist()
+aeds <- lapply(aeds, function(x) strsplit(x, "_"))
+aeds <- lapply(aeds, function(x) x[[1]][1]) %>% unlist()
+aeds <- unique(aeds)
+aeds[grep(pattern="lamotrigine",ignore.case=T,x=aeds)] <- "Lamotrigine"
+aeds[grep(pattern="Phenytoin",ignore.case=T,x=aeds)] <- "Phenytoin"
+aeds[grep(pattern="Gabapentin",ignore.case=T,x=aeds)] <- "Gabapentin"
+aeds <- unique(aeds)
+# aeds <- c("Gabapentin","Lacosamide","Levetiracetam")
+lapply(aeds, function(x) try(Plot.SurvChf.byMc(FM, censored.incident, x)))
+
+```
+
+
+
+
+
+

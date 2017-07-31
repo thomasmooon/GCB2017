@@ -1,0 +1,56 @@
+---
+title: "matching table: main-comorbidity to ICD9"
+subtitle: "prevalent"
+author: "Thomas Gerlach"
+output: html_notebook
+date: "2017 JAN 25"
+---
+
+# setup
+```{r setup, include=FALSE, echo = FALSE }
+# set knitr defaults
+rm(list=setdiff(ls(),"TABLE04SAS7BDAT.sparse"))
+knitr::opts_chunk$set(echo = TRUE, fig.width=10, fig.height=10)
+source("z_start.R") # initalize netezza DB, load core data
+if(!exists("TABLE04SAS7BDAT.sparse")) load("./data/TABLE04SAS7BDAT.sparse.RData")
+adult <- FILTER_PATIENTS_AGE_REGION(TABLE04SAS7BDAT.sparse, sparse = T, cohort = "adult")
+```
+
+# Diagnosis VS main-comorbidity
+```{r}
+
+
+diag2mc <-
+  adult %>% 
+  filter(DIAG != "",!is.na(MAIN.COMORB)) %>% 
+  dplyr::select(DIAG, MAIN.COMORB) %>% 
+  distinct()
+
+head(diag2mc)
+
+# add ICD9_STRING
+diag2mc <- ParseICD9(diag2mc)
+head(diag2mc)
+diag2mc <- unique(diag2mc)
+sapply(diag2mc,class)
+
+ICD9 <- 
+  tbl(src, "REFERENCE.ICD9GROUPING") %>% 
+  dplyr::select(ICD9, ICD9_STRING, PHEWAS_STRING) %>% 
+  distinct() %>%
+  collect()
+
+head(ICD9)
+sapply(ICD9,class)
+ICD9 <- apply(ICD9,2,as.character) %>% as_tibble()
+
+
+diag2mc <- left_join(diag2mc, ICD9, by = c("DIAG" = "ICD9"))
+
+MC2ICD9 <- diag2mc[,c(2,4,1,3)]
+MC2ICD9 <- MC2ICD9[order(MC2ICD9$MAIN.COMORB,MC2ICD9$DIAG),]
+
+knitr::kable(MC2ICD9)
+                     
+
+```

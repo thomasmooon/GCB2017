@@ -1,0 +1,177 @@
+---
+title: "importance sampling (scaled importance) "
+subtitle: "mrmr (5000) + srf (4000 trees, scaled permutation importance)"
+output: html_notebook
+---
+
+```{r}
+library(ranger)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(ff)
+path <- "~/epilepsie_preprocessing_descrStat/MRMR.SRF.fullmodel/data/"
+files <- dir(path, pattern = "RData")
+workspacenames <- strsplit(files, "\\.") %>% lapply(function(x) x[1]) %>% unlist() 
+source <- paste(path,files,sep="")
+for(i in seq_len(length(files))) {
+  load(source[i])
+  results$forest$dependent.varID <- NULL
+  results$forest$num.trees <- NULL
+  results$forest$child.nodeIDs <- NULL
+  results$forest$split.varIDs <- NULL
+  results$forest$split.values <- NULL
+  results$forest$isordered <- NULL
+  results$forest$status.varID <- NULL
+  results$forest$indep4endent.variable.names <- NULL
+  results$forest$treetype <- NULL
+  assign(workspacenames[i],results$ranger.forest[c("survival","chf","forest")])
+  rm(results)}
+```
+
+# how man features have had a positive importance, by main-comorbidity?
+```{r}
+mc <- c("Anxiety","Bipolar","Depression","Diabetes","Hyperlipidemia","Hypertension","Migraine","Overweight","Stroke")
+```
+
+# survival + CHF curves, by AED
+# define wrapper
+```{r}
+Plot.SurvChf.byMc <- function(FM, censored.incident, AED_name) {
+  
+  AEDCols <- grep(pattern = paste("QUARTQTY\\.x\\.",AED_name, sep=""), ignore.case = T, x = colnames(FM$featureMatrix))
+  enrolCol <- grep(pattern = "enrolid", ignore.case = T, x = colnames(FM$featureMatrix))
+  FM <- FM$featureMatrix[,c(enrolCol,AEDCols)]
+  hasAED <- apply(FM[,-1], 1, function(x) sum(x) > 0)
+  FM <- data.frame(FM$ENROLID, hasAED)
+  censored.incident.AED <- inner_join(censored.incident, FM, by = c("ENROLID" = "FM.ENROLID"))
+  nPat <- length(hasAED)
+  nHasAED <- sum(hasAED)
+  nNoAED <- nPat-nHasAED
+  
+  
+  #################
+  #  survival #
+  #################
+  getAEDSurvivalComparsion <-
+    function(rfObject, mc) {
+      combined <- cbind(censored.incident.AED %>% filter(status %in% c("censored", mc)), rfObject$survival) %>% filter(status %in% mc)
+      combined <- combined %>% select(-ENROLID, -time, -status) 
+      byHasAED <- aggregate(. ~ hasAED, data = combined, FUN = mean)
+      byHasAED <- gather(data = byHasAED, key = time, surv, -hasAED) %>% spread(key = hasAED, value = surv) 
+      byHasAED$time <- as.numeric(byHasAED$time)
+      byHasAED <- byHasAED %>% arrange(time)
+      byHasAED$time <- rfObject$forest$unique.death.times
+      byHasAED <- byHasAED %>% gather(hasAED, value = surv, -time)
+      return(byHasAED)
+    }
+  
+  Anxiety.AED.survival <- getAEDSurvivalComparsion(Anxiety, "Anxiety")
+  Bipolar.AED.survival <- getAEDSurvivalComparsion(Bipolar, "Bipolar.Schizophrenia")
+  Depression.AED.survival <- getAEDSurvivalComparsion(Depression, "Depression")
+  Diabetes.AED.survival <- getAEDSurvivalComparsion(Diabetes, "Diabetes")
+  Hyperlipidemia.AED.survival <- getAEDSurvivalComparsion(Hyperlipidemia, "Hyperlipidemia")
+  Hypertension.AED.survival <- getAEDSurvivalComparsion(Hypertension, "Hypertension")
+  Migraine.AED.survival <- getAEDSurvivalComparsion(Migraine, "Migraine")
+  Overweight.AED.survival <- getAEDSurvivalComparsion(Overweight, "Overweight")
+  Stroke.AED.survival <- getAEDSurvivalComparsion(Stroke, "Stroke.IschemAttack")
+  
+  AED.survival.all <- rbind(
+    data.frame(mc="Anxiety", Anxiety.AED.survival),
+    data.frame(mc="Bipolar, Schizophrenia",Bipolar.AED.survival),
+    data.frame(mc="Depression",Depression.AED.survival),
+    data.frame(mc="Diabetes",Diabetes.AED.survival),
+    data.frame(mc="Hyperlipidemia",Hyperlipidemia.AED.survival),
+    data.frame(mc="Hypertension",Hypertension.AED.survival),
+    data.frame(mc="Migraine",Migraine.AED.survival),
+    data.frame(mc="Overweight",Overweight.AED.survival),
+    data.frame(mc="Stroke, Ischemic Attack",Stroke.AED.survival)
+  )
+  
+  p1 <- 
+    ggplot(data = AED.survival.all, aes(x = time, y = surv, colour = hasAED)) + 
+    geom_line(aes(group = hasAED)) + 
+    geom_point() + 
+    facet_wrap(~mc) +
+    ggtitle(paste(AED_name,", nPat = ", nPat, ", nAED : nNoAED =", nHasAED," : ",nNoAED, sep = ""))
+  plot(p1)
+  
+  ###########
+  # chf     #
+  ###########
+  getAEDChfComparsion <-
+    function(rfObject, mc) {
+      combined <- cbind(censored.incident.AED %>% filter(status %in% c("censored", mc)), rfObject$chf) %>% filter(status %in% mc)
+      combined <- combined %>% select(-ENROLID, -time, -status) 
+      byHasAED <- aggregate(. ~ hasAED, data = combined, FUN = mean)
+      byHasAED <- gather(data = byHasAED, key = time, surv, -hasAED) %>% spread(key = hasAED, value = surv) 
+      byHasAED$time <- as.numeric(byHasAED$time)
+      byHasAED <- byHasAED %>% arrange(time)
+      byHasAED$time <- rfObject$forest$unique.death.times
+      byHasAED <- byHasAED %>% gather(hasAED, value = surv, -time)
+      return(byHasAED)
+    }
+  
+  Anxiety.AED.Chf <- getAEDChfComparsion(Anxiety, "Anxiety")
+  Bipolar.AED.Chf <- getAEDChfComparsion(Bipolar, "Bipolar.Schizophrenia")
+  Depression.AED.Chf <- getAEDChfComparsion(Depression, "Depression")
+  Diabetes.AED.Chf <- getAEDChfComparsion(Diabetes, "Diabetes")
+  Hyperlipidemia.AED.Chf <- getAEDChfComparsion(Hyperlipidemia, "Hyperlipidemia")
+  Hypertension.AED.Chf <- getAEDChfComparsion(Hypertension, "Hypertension")
+  Migraine.AED.Chf <- getAEDChfComparsion(Migraine, "Migraine")
+  Overweight.AED.Chf <- getAEDChfComparsion(Overweight, "Overweight")
+  Stroke.AED.Chf <- getAEDChfComparsion(Stroke, "Stroke.IschemAttack")
+  
+  # plot
+  AED.Chf.all <- rbind(
+    data.frame(mc="Anxiety", Anxiety.AED.Chf),
+    data.frame(mc="Bipolar, Schizophrenia",Bipolar.AED.Chf),
+    data.frame(mc="Depression",Depression.AED.Chf),
+    data.frame(mc="Diabetes",Diabetes.AED.Chf),
+    data.frame(mc="Hyperlipidemia",Hyperlipidemia.AED.Chf),
+    data.frame(mc="Hypertension",Hypertension.AED.Chf),
+    data.frame(mc="Migraine",Migraine.AED.Chf),
+    data.frame(mc="Overweight",Overweight.AED.Chf),
+    data.frame(mc="Stroke, Ischemic Attack",Stroke.AED.Chf)
+  )
+  
+  AED.Chf.all$mc <- as.character(AED.Chf.all$mc)
+  AED.Chf.all$hasAED <- as.logical(AED.Chf.all$hasAED)
+  
+  p2 <- 
+    ggplot(data = AED.Chf.all, aes(x = time, y = surv, colour = hasAED)) + 
+    ylab("cumulative hazard function") +
+    geom_line(aes(group = hasAED)) + 
+    geom_point() + 
+    facet_wrap(~mc) + 
+    theme(panel.grid.major = element_line(colour = "grey50"))  +
+    ggtitle(paste(AED_name,", nPat = ", nPat, ", nHasAED : nNoAED ", nHasAED,":",nNoAED, sep = ""))
+  plot(p2)
+  return(NULL)
+}
+```
+
+##
+```{r}
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/FM.all.RData") # full feature matrix (all features, all patients)
+load("~/epilepsie_preprocessing_descrStat/output/featureMatrix/censored.incident.RData")
+
+
+aeds <- unique(grep(pattern = "quartqty", ignore.case = T, x = colnames(FM$featureMatrix), value = T))
+rm(FM)
+aeds <- lapply(aeds, function(x) strsplit(x, "\\.x\\."))
+aeds <- lapply(aeds, function(x) x[[1]][2]) %>% unlist()
+aeds <- lapply(aeds, function(x) strsplit(x, "_"))
+aeds <- lapply(aeds, function(x) x[[1]][1]) %>% unlist()
+aeds <- unique(aeds)
+aeds[grep(pattern="lamotrigine",ignore.case=T,x=aeds)] <- "Lamotrigine"
+aeds[grep(pattern="Phenytoin",ignore.case=T,x=aeds)] <- "Phenytoin"
+aeds[grep(pattern="Gabapentin",ignore.case=T,x=aeds)] <- "Gabapentin"
+aeds <- unique(aeds)
+# aeds <- c("Gabapentin","Lacosamide","Levetiracetam")
+lapply(aeds, function(x) try(Plot.SurvChf.byMc(FM, censored.incident, x)))
+# parallel::mclapply(aeds, function(x) try(Plot.SurvChf.byMc(FM, censored.incident, x)),mc.cores = 15)
+
+```
+
+

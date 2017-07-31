@@ -1,0 +1,77 @@
+---
+title: "In how many cross-validation samples were features selected by main-comorbidity"
+subtitle: "cross_validation_count_per_feature.Rmd"
+output: html_notebook
+---
+
+
+```{r}
+load("~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/importance_4000/survRF_summary.RData")
+library(dplyr)
+```
+
+```{r}
+names(survRF$Anxiety)
+length(survRF$Anxiety$training)
+names(survRF$Anxiety$training[[1]]$importance)
+
+MC <- names(survRF)
+n2 <- length(survRF$Anxiety$training)
+
+cv.features <- lapply(MC, function(mc) {lapply(1:n2, function(cv) names(survRF[[mc]]$training[[cv]]$importance) )})
+for(mc in 1:length(MC)) {
+  for(cv in 1:n2) {
+    cv.features[[mc]][[cv]] <- data.frame(MC = MC[mc], CV = cv, feature = cv.features[[mc]][[cv]], stringsAsFactors = F)
+  }
+}
+
+x <- lapply(1:9, function(x) do.call(rbind.data.frame, cv.features[[x]]))
+x <- do.call(rbind.data.frame, x)
+cross_validation_count_per_feature <- data.table::dcast(x, feature ~ MC, fun.aggregate = length, fill = 0)
+str(cross_validation_count_per_feature)
+
+save(cross_validation_count_per_feature,
+     file = "~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/cross_validation_count_per_feature.RData",
+     compress = T)
+
+write.table(
+  x = cross_validation_count_per_feature,
+  file = "~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/cross_validation_count_per_feature.txt",
+  sep = "\t",
+  row.names = F,
+  col.names = T
+  )
+```
+
+# domain frequency by CV by MC
+```{r}
+source("~/epilepsie_preprocessing_descrStat/functions/GetDomainNames.R")
+str(x)
+x.domains <- getDomainTotal(x, "feature")
+head(x.domains)
+x.domains <- x.domains %>% select(MC, CV, domain, subdomain) %>% distinct()
+
+x.domains.count <- x.domains %>% group_by(MC,domain,subdomain) %>% tally() %>% rename(nCV = n)
+
+write.table(
+  x = x.domains.count,
+  file = "~/epilepsie_preprocessing_descrStat/MRMR.SRF/data/cross_validation_count_per_domain.txt",
+  sep = "\t",
+  row.names = F,
+  col.names = T
+  )
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
