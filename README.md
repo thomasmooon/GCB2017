@@ -1,5 +1,5 @@
 # Content:
-This repo contains supplemental information (R-Code) of the paper mentioned below, submitted and accepted to GCB 2017 http://www.gcb2017.de/
+This repo contains supplemental information (R-Code, branch "redoepd183") of the paper mentioned below, submitted and accepted to GCB 2017 http://www.gcb2017.de/
 
 # Paper
 ## Title
